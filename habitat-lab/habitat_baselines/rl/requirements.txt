@@ -1,0 +1,4 @@
+moviepy>=1.0.1
+torch>=1.13.1
+tensorflow==2.11.1
+tb-nightly

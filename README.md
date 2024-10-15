@@ -15,10 +15,12 @@ Vision and Language Navigation in Continuous Environments (VLN-CE) is an instruc
 
 ## Setup
 
-This project is developed with Python 3.6. If you are using [miniconda](https://docs.conda.io/en/latest/miniconda.html) or [anaconda](https://anaconda.org/), you can create an environment:
+This project is developed with Python 3.6.  If you are using [miniconda](https://docs.conda.io/en/latest/miniconda.html) or [anaconda](https://anaconda.org/), you can create an environment:
+
+This project has been updated to support Python 3.8.
 
 ```bash
-conda create -n vlnce python=3.6
+conda create -n vlnce python=3.8
 conda activate vlnce
 ```
 
@@ -28,23 +30,27 @@ VLN-CE uses [Habitat-Sim](https://github.com/facebookresearch/habitat-sim/tree/v
 conda install -c aihabitat -c conda-forge habitat-sim=0.1.7 headless
 ```
 
+You can start from cloning this repository:
+```bash
+git clone https://github.com/zhanglixuan0720/VLN-CE-py38.git
+```
+
 Then install [Habitat-Lab](https://github.com/facebookresearch/habitat-lab/tree/v0.1.7):
 
 ```bash
-git clone --branch v0.1.7 git@github.com:facebookresearch/habitat-lab.git
-cd habitat-lab
-# installs both habitat and habitat_baselines
+# 
+cd habitat-lab # this repository has been downloaeded from git clone --branch v0.1.7 https://github.com/facebookresearch/habitat-lab.git
+# installs both habitat and habitat_baselines (v0.1.7)
 python -m pip install -r requirements.txt
 python -m pip install -r habitat_baselines/rl/requirements.txt
 python -m pip install -r habitat_baselines/rl/ddppo/requirements.txt
 python setup.py develop --all
 ```
 
-Now you can install VLN-CE:
+Now you can install VLN-CE-py38:
 
 ```bash
-git clone git@github.com:jacobkrantz/VLN-CE.git
-cd VLN-CE
+cd VLN-CE-py38
 python -m pip install -r requirements.txt
 ```
 
@@ -237,6 +243,28 @@ python run.py --exp-config vlnce_baselines/config/r2r_baselines/nonlearning.yaml
 ```
 
 For lists of modifiable configuration options, see the default [task config](habitat_extensions/config/default.py) and [experiment config](vlnce_baselines/config/default.py) files.
+
+
+### FAQ when running code
+
+#### 1. Unknown exit error
+
+You may need to configure the X service in your headless machine. Starting X in a tmux terminal by 
+```
+tmux new -s X
+X :99
+```
+If you are not the root user, ask your server manager to add this line to `/etc/X11/Xwrapper.config` so that you can start the X by yourself.
+```
+allowed_users = anybody
+```
+Finally, export the DISPLAY value as :99 before running the code.
+```
+export DISPLAY=:99
+$your code$
+```
+
+
 
 ### Training Agents
 

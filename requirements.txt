@@ -10,9 +10,8 @@ networkx
 numpy>=1.16.1
 pre-commit
 torch>=1.6.0
-torchvision==0.2.2.post3
+torchvision
 tqdm>=4.0.0
-tensorflow==1.13.1
 tb-nightly
 yacs>=0.1.5
 Opencv-python>=3.3.0
