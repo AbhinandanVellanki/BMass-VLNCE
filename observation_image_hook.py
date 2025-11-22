@@ -1,7 +1,3 @@
-"""
-Combined module for observation saving and noise injection
-Handles both noise injection and saving of RGB/Depth observations during training
-"""
 
 import os
 import cv2

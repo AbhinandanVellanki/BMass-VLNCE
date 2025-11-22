@@ -318,3 +318,8 @@ If you use the RxR-Habitat data, please additionally cite the following [paper](
   year={2020}
 }
 ```
+# Shivang Cheat Code
+
+```
+cd /home/abhi/Documents/VLN-CE-py38 && conda activate vlnce_p3.8 && xvfb-run -a -s "-screen 0 1024x768x24" python run.py --exp-config vlnce_baselines/config/rxr_baselines/rxr_cma_en_obs.yaml --run-type train
+```
