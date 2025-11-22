@@ -18,6 +18,13 @@ from habitat_extensions.task import ALL_ROLES_MASK, RxRVLNCEDatasetV1
 from vlnce_baselines.common.env_utils import construct_envs
 from vlnce_baselines.common.utils import extract_instruction_tokens
 
+# Import observation image hook (combined saver and noise injector)
+from observation_image_hook import (
+    ObservationSaver, 
+    ObservationNoiseInjector,
+    ObservationNoiseInjectorPatch
+)
+
 
 class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
     def __init__(self, config: Config):
@@ -30,6 +37,21 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
         ), "preload size must be greater than batch size."
         self.envs = None
         self._env_observations = None
+        
+        # Initialize observation saver
+        self.obs_saver = ObservationSaver(
+            save_dir="training_observations",
+            save_frequency=50,  # Save every 50 steps
+            save_noisy=True  # Also save noisy images
+        )
+        
+        # Initialize noise injector
+        self.noise_injector = ObservationNoiseInjector(
+            rgb_noise_type="gaussian",  # Options: gaussian, salt_pepper, speckle, motion_blur
+            depth_noise_type="gaussian",  # Options: gaussian, dropout, quantization
+            rgb_noise_params={"gaussian": {"mean": 0, "std": 0.5}},  # 50% noise
+            depth_noise_params={"gaussian": {"mean": 0, "std": 0.5}}  # 50% noise
+        )
 
         if config.IL.use_iw:
             self.inflec_weights = torch.tensor(
@@ -191,6 +213,13 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
                 observations,
                 self.config.TASK_CONFIG.TASK.INSTRUCTION_SENSOR_UUID,
             )
+            
+            # Inject noise into observations
+            noisy_observations = self.noise_injector.inject_noise(observations)
+            
+            # Save both original and noisy observations to disk
+            episode_ids = [ep.episode_id for ep in current_episodes]
+            self.obs_saver.save(observations, episode_ids, noisy_observations)
 
             current_episodes = self.envs.current_episodes()
 
@@ -213,9 +242,10 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
                 path_step = self.trajectories[current_episodes[i].episode_id][
                     self.env_step[i]
                 ]
+                # Store NOISY observations for training
                 self._env_observations[i].append(
                     (
-                        observations[i],
+                        noisy_observations[i],  # Use noisy instead of original
                         path_step[0],  # prev_action
                         path_step[2],  # oracle_action
                     )

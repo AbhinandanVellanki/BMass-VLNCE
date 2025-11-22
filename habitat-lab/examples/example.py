@@ -11,7 +11,7 @@ def example():
     # Note: Use with for the example testing, doesn't need to be like this on the README
 
     with habitat.Env(
-        config=habitat.get_config("configs/tasks/pointnav.yaml")
+        config=habitat.get_config("/home/abhi/Documents/VLN-CE-py38/habitat-lab/configs/tasks/pointnav.yaml")
     ) as env:
         print("Environment creation successful")
         observations = env.reset()  # noqa: F841
