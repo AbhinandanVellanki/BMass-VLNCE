@@ -38,6 +38,19 @@ _C.EVAL.EVAL_NONLEARNING = False
 _C.EVAL.NONLEARNING = CN()
 _C.EVAL.NONLEARNING.AGENT = "RandomAgent"
 
+# NOISE INJECTION CONFIG FOR EVAL
+_C.EVAL.USE_NOISE = False  # Enable/disable noise injection during eval
+_C.EVAL.NOISE = CN()
+_C.EVAL.NOISE.RGB_NOISE_TYPE = "gaussian"  # Options: gaussian, salt_pepper, speckle, motion_blur, patch
+_C.EVAL.NOISE.DEPTH_NOISE_TYPE = "gaussian"  # Options: gaussian, dropout, quantization
+_C.EVAL.NOISE.RGB_STD = 0.25  # Standard deviation for RGB Gaussian noise
+_C.EVAL.NOISE.DEPTH_STD = 0.25  # Standard deviation for depth Gaussian noise
+# Patch noise specific parameters (used when RGB_NOISE_TYPE = "patch")
+_C.EVAL.NOISE.PATCH_NUM = 10  # Number of patches per image
+_C.EVAL.NOISE.PATCH_SIZE_MIN = 20  # Minimum patch size in pixels
+_C.EVAL.NOISE.PATCH_SIZE_MAX = 60  # Maximum patch size in pixels
+_C.EVAL.NOISE.PATCH_TYPE = "random"  # Options: random, black, white, gray
+
 # ----------------------------------------------------------------------------
 # INFERENCE CONFIG
 # ----------------------------------------------------------------------------

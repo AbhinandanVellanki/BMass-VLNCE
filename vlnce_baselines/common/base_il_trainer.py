@@ -29,6 +29,18 @@ from vlnce_baselines.common.aux_losses import AuxLosses
 from vlnce_baselines.common.env_utils import construct_envs_auto_reset_false
 from vlnce_baselines.common.utils import extract_instruction_tokens
 
+# Import noise injectors for evaluation
+try:
+    from observation_image_hook import (
+        ObservationSaver,
+        ObservationNoiseInjector,
+        ObservationNoiseInjectorPatch
+    )
+    NOISE_INJECTOR_AVAILABLE = True
+except ImportError:
+    NOISE_INJECTOR_AVAILABLE = False
+    logger.warning("observation_image_hook not available - noise injection disabled")
+
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=FutureWarning)
     import tensorflow as tf  # noqa: F401
@@ -50,6 +62,87 @@ class BaseVLNCETrainer(BaseILTrainer):
         self.obs_transforms = []
         self.start_epoch = 0
         self.step_id = 0
+        self.eval_noise_injector = None  # Initialize noise injector for eval
+    
+    def _initialize_eval_noise_injector(self, config):
+        """Initialize noise injectors for evaluation if enabled in config"""
+        if not config.EVAL.USE_NOISE or not NOISE_INJECTOR_AVAILABLE:
+            return None
+        
+        logger.info("=" * 80)
+        logger.info("INITIALIZING NOISE INJECTION FOR EVALUATION")
+        logger.info("=" * 80)
+        
+        if config.EVAL.NOISE.RGB_NOISE_TYPE == "patch":
+            # Use patch noise for RGB
+            rgb_injector = ObservationNoiseInjectorPatch(
+                num_patches=config.EVAL.NOISE.PATCH_NUM,
+                patch_size_range=(config.EVAL.NOISE.PATCH_SIZE_MIN, 
+                                 config.EVAL.NOISE.PATCH_SIZE_MAX),
+                patch_type=config.EVAL.NOISE.PATCH_TYPE,
+                patch_color=None
+            )
+            # Use standard noise for depth
+            depth_injector = ObservationNoiseInjector(
+                rgb_noise_type="gaussian",  # Dummy, won't be used
+                depth_noise_type=config.EVAL.NOISE.DEPTH_NOISE_TYPE,
+                rgb_noise_params={"gaussian": {"mean": 0, "std": 0.0}},
+                depth_noise_params={"gaussian": {"mean": 0, "std": config.EVAL.NOISE.DEPTH_STD}}
+            )
+            logger.info(f"  RGB: Patch noise ({config.EVAL.NOISE.PATCH_NUM} patches)")
+            logger.info(f"  Depth: {config.EVAL.NOISE.DEPTH_NOISE_TYPE} (std={config.EVAL.NOISE.DEPTH_STD})")
+            logger.info("=" * 80 + "\n")
+            return (rgb_injector, depth_injector)
+        else:
+            # Use standard noise injector for both RGB and depth
+            noise_injector = ObservationNoiseInjector(
+                rgb_noise_type=config.EVAL.NOISE.RGB_NOISE_TYPE,
+                depth_noise_type=config.EVAL.NOISE.DEPTH_NOISE_TYPE,
+                rgb_noise_params={"gaussian": {"mean": 0, "std": config.EVAL.NOISE.RGB_STD}},
+                depth_noise_params={"gaussian": {"mean": 0, "std": config.EVAL.NOISE.DEPTH_STD}}
+            )
+            logger.info(f"  RGB: {config.EVAL.NOISE.RGB_NOISE_TYPE} (std={config.EVAL.NOISE.RGB_STD})")
+            logger.info(f"  Depth: {config.EVAL.NOISE.DEPTH_NOISE_TYPE} (std={config.EVAL.NOISE.DEPTH_STD})")
+            logger.info("=" * 80 + "\n")
+            return noise_injector
+    
+    def _initialize_eval_observation_saver(self, config):
+        """Initialize observation saver for evaluation visualization"""
+        if not NOISE_INJECTOR_AVAILABLE:
+            return None
+        
+        # Create saver for eval observations - use absolute path to avoid permission issues
+        save_dir = os.path.join(os.path.expanduser("~"), "eval_observations")
+        save_noisy = config.EVAL.USE_NOISE  # Only save noisy if noise is enabled
+        saver = ObservationSaver(
+            save_dir=save_dir,
+            save_frequency=50,  # Save every 50 steps
+            save_noisy=save_noisy
+        )
+        logger.info(f"Observation saver initialized for evaluation")
+        logger.info(f"  Saving to: {save_dir}/")
+        logger.info(f"  Save noisy: {save_noisy}\n")
+        return saver
+    
+    def _inject_noise_to_observations(self, observations):
+        """Inject noise into observations if noise injector is initialized"""
+        if self.eval_noise_injector is None:
+            return observations
+        
+        # Handle two separate injectors (patch + depth)
+        if isinstance(self.eval_noise_injector, tuple):
+            rgb_injector, depth_injector = self.eval_noise_injector
+            noisy_obs = rgb_injector.inject_noise(observations)
+            noisy_obs = depth_injector.inject_noise(noisy_obs)
+            return noisy_obs
+        else:
+            # Single injector for both
+            return self.eval_noise_injector.inject_noise(observations)
+    
+    def _save_eval_observations(self, observations, noisy_observations, episode_ids, saver):
+        """Save both clean and noisy observations during evaluation"""
+        if saver is not None:
+            saver.save(observations, episode_ids, noisy_observations)
 
     def _initialize_policy(
         self,
@@ -277,10 +370,30 @@ class BaseVLNCETrainer(BaseILTrainer):
         )
         self.policy.eval()
 
+        # Initialize noise injector for evaluation if enabled
+        self.eval_noise_injector = self._initialize_eval_noise_injector(config)
+        
+        # Initialize observation saver for visualization
+        eval_obs_saver = self._initialize_eval_observation_saver(config)
+
         observations = envs.reset()
         observations = extract_instruction_tokens(
             observations, self.config.TASK_CONFIG.TASK.INSTRUCTION_SENSOR_UUID
         )
+        
+        # Store clean observations for saving
+        clean_observations = [obs.copy() for obs in observations]
+        
+        # Inject noise into initial observations
+        noisy_observations = self._inject_noise_to_observations(observations)
+        
+        # Save initial observations (clean and noisy)
+        current_episodes = envs.current_episodes()
+        episode_ids = [ep.episode_id for ep in current_episodes]
+        self._save_eval_observations(clean_observations, noisy_observations, episode_ids, eval_obs_saver)
+        
+        # Use noisy observations for the model
+        observations = noisy_observations
         batch = batch_obs(observations, self.device)
         batch = apply_obs_transforms_batch(batch, self.obs_transforms)
 
@@ -382,6 +495,20 @@ class BaseVLNCETrainer(BaseILTrainer):
                 observations,
                 self.config.TASK_CONFIG.TASK.INSTRUCTION_SENSOR_UUID,
             )
+            
+            # Store clean observations for saving
+            clean_observations = [obs.copy() for obs in observations]
+            
+            # Inject noise into observations after environment step
+            noisy_observations = self._inject_noise_to_observations(observations)
+            
+            # Save observations (clean and noisy) for visualization
+            current_episodes = envs.current_episodes()
+            episode_ids = [ep.episode_id for ep in current_episodes]
+            self._save_eval_observations(clean_observations, noisy_observations, episode_ids, eval_obs_saver)
+            
+            # Use noisy observations for the model
+            observations = noisy_observations
             batch = batch_obs(observations, self.device)
             batch = apply_obs_transforms_batch(batch, self.obs_transforms)
 

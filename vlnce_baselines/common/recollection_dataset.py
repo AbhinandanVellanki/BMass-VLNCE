@@ -39,17 +39,19 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
         self._env_observations = None
         
         # Initialize observation saver
-        # self.obs_saver = ObservationSaver(
-        #     save_dir="training_observations",
-        #     save_frequency=50,  # Save every 50 steps
-        #     save_noisy=True  # Also save noisy images
-        # )
+        self.obs_saver = ObservationSaver(
+            save_dir="training_observations",
+            save_frequency=250, 
+            save_noisy=True 
+        )
         
         # Initialize noise injector
         self.noise_injector = ObservationNoiseInjector(
             rgb_noise_type="gaussian",  # Options: gaussian, salt_pepper, speckle, motion_blur
+            # rgb_noise_type="salt_pepper", 
             depth_noise_type="gaussian",  # Options: gaussian, dropout, quantization
             rgb_noise_params={"gaussian": {"mean": 0, "std": 0.25}},  # 50% noise
+            # rgb_noise_params={"salt_pepper": {"amount": 0.5}},
             depth_noise_params={"gaussian": {"mean": 0, "std": 0.25}}  # 50% noise
         )
 

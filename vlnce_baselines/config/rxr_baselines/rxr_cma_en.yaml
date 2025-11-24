@@ -2,11 +2,12 @@ BASE_TASK_CONFIG_PATH: habitat_extensions/config/rxr_vlnce_english_task.yaml
 TRAINER_NAME: recollect_trainer
 SIMULATOR_GPU_IDS: [1]
 TORCH_GPU_ID: 0
-NUM_ENVIRONMENTS: 8
+NUM_ENVIRONMENTS: 1
 TENSORBOARD_DIR: data/tensorboard_dirs/rxr_cma_en_20
 CHECKPOINT_FOLDER: data/checkpoints/rxr_cma_en_20/run_2
 EVAL_CKPT_PATH_DIR: data/checkpoints/rxr_cma_en_20/run_2
 RESULTS_DIR: data/checkpoints/rxr_cma_en_20/evals/run_2
+LOG_FILE: data/logs/rxr_cma_en_20/run_2.log
 
 INFERENCE:
   SPLIT: test_challenge
