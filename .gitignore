@@ -146,10 +146,6 @@ stats_*.json
 # custom slurm utils
 sbatch_scripts
 
-
-
-
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -239,3 +235,6 @@ data
 
 # vim
 *.swp
+
+eval_observations
+
