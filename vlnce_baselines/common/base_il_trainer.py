@@ -93,8 +93,8 @@ class BaseVLNCETrainer(BaseILTrainer):
             logger.info(f"  Depth: {config.EVAL.NOISE.DEPTH_NOISE_TYPE} (std={config.EVAL.NOISE.DEPTH_STD})")
             logger.info("=" * 80 + "\n")
             return (rgb_injector, depth_injector)
-        else:
-            # Use standard noise injector for both RGB and depth
+        if config.EVAL.NOISE.RGB_NOISE_TYPE == "gaussian":
+            # Use standard (Gaussian) noise injector for both RGB and depth
             noise_injector = ObservationNoiseInjector(
                 rgb_noise_type=config.EVAL.NOISE.RGB_NOISE_TYPE,
                 depth_noise_type=config.EVAL.NOISE.DEPTH_NOISE_TYPE,
@@ -105,6 +105,10 @@ class BaseVLNCETrainer(BaseILTrainer):
             logger.info(f"  Depth: {config.EVAL.NOISE.DEPTH_NOISE_TYPE} (std={config.EVAL.NOISE.DEPTH_STD})")
             logger.info("=" * 80 + "\n")
             return noise_injector
+        else:
+            # no noise
+            logger.info("No valid noise type specified, skipping noise injection.\n")
+            return None
     
     def _initialize_eval_observation_saver(self, config):
         """Initialize observation saver for evaluation visualization"""
@@ -112,12 +116,12 @@ class BaseVLNCETrainer(BaseILTrainer):
             return None
         
         # Create saver for eval observations - use absolute path to avoid permission issues
-        save_dir = os.path.join(os.path.expanduser("~"), "eval_observations")
+        save_dir ="eval_observations"
         save_noisy = config.EVAL.USE_NOISE  # Only save noisy if noise is enabled
         saver = ObservationSaver(
             save_dir=save_dir,
             save_frequency=50,  # Save every 50 steps
-            save_noisy=save_noisy
+            save_noisy=save_noisy,
         )
         logger.info(f"Observation saver initialized for evaluation")
         logger.info(f"  Saving to: {save_dir}/")
@@ -371,7 +375,10 @@ class BaseVLNCETrainer(BaseILTrainer):
         self.policy.eval()
 
         # Initialize noise injector for evaluation if enabled
-        self.eval_noise_injector = self._initialize_eval_noise_injector(config)
+        if config.EVAL.USE_NOISE:
+            self.eval_noise_injector = self._initialize_eval_noise_injector(config)
+            if self.eval_noise_injector is None:
+                logger.warning("Eval noise injector not initialized despite config setting.")
         
         # Initialize observation saver for visualization
         eval_obs_saver = self._initialize_eval_observation_saver(config)
