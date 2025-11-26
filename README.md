@@ -319,7 +319,14 @@ If you use the RxR-Habitat data, please additionally cite the following [paper](
 }
 ```
 # Shivang Cheat Code
+## Train
 
 ```
 cd /home/abhi/Documents/VLN-CE-py38 && conda activate vlnce_p3.8 && xvfb-run -a -s "-screen 0 1024x768x24" python run.py --exp-config vlnce_baselines/config/rxr_baselines/rxr_cma_en_obs.yaml --run-type train
+```
+
+## Eval
+
+```
+cd /home/abhi/Documents/VLN-CE-py38 && xvfb-run -a -s "-screen 0 1024x768x24" python run.py   --run-type eval   --exp-config /home/abhi/Documents/VLN-CE-py38/vlnce_baselines/config/rxr_baselines/rxr_cma_en_obs.yaml TENSORBOARD_DIR data/tensorboard_dirs/rxr_cma_en CHECKPOINT_FOLDER /home/abhi/Documents/VLN-CE-py38/data/checkpoints/rxr_cma_en_20/run_1 EVAL_CKPT_PATH_DIR /home/abhi/Documents/VLN-CE-py38/data/checkpoints/rxr_cma_en_20/run_1/ckpt.14.pth RESULTS_DIR /home/abhi/Documents/VLN-CE-py38/data/checkpoints/rxr_cma_en_20/run_1/evals_noisy_gaussian EVAL.SPLIT val_seen EVAL.LANGUAGES "['en-US']" NUM_ENVIRONMENTS 1 EVAL.USE_NOISE True EVAL.NOISE.RGB_NOISE_TYPE "gaussian" EVAL.NOISE.DEPTH_NOISE_TYPE "gaussian" EVAL.NOISE.RGB_STD 0.25 EVAL.NOISE.DEPTH_STD 0.25
 ```
