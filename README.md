@@ -38,7 +38,7 @@ git clone https://github.com/zhanglixuan0720/VLN-CE-py38.git
 Then install [Habitat-Lab](https://github.com/facebookresearch/habitat-lab/tree/v0.1.7):
 
 ```bash
-# 
+#
 cd habitat-lab # this repository has been downloaeded from git clone --branch v0.1.7 https://github.com/facebookresearch/habitat-lab.git
 # installs both habitat and habitat_baselines (v0.1.7)
 python -m pip install -r requirements.txt
@@ -249,7 +249,7 @@ For lists of modifiable configuration options, see the default [task config](hab
 
 #### 1. Unknown exit error
 
-You may need to configure the X service in your headless machine. Starting X in a tmux terminal by 
+You may need to configure the X service in your headless machine. Starting X in a tmux terminal by
 ```
 tmux new -s X
 X :99
@@ -330,3 +330,9 @@ cd /home/abhi/Documents/VLN-CE-py38 && conda activate vlnce_p3.8 && xvfb-run -a 
 ```
 cd /home/abhi/Documents/VLN-CE-py38 && xvfb-run -a -s "-screen 0 1024x768x24" python run.py   --run-type eval   --exp-config /home/abhi/Documents/VLN-CE-py38/vlnce_baselines/config/rxr_baselines/rxr_cma_en_obs.yaml TENSORBOARD_DIR data/tensorboard_dirs/rxr_cma_en CHECKPOINT_FOLDER /home/abhi/Documents/VLN-CE-py38/data/checkpoints/rxr_cma_en_20/run_1 EVAL_CKPT_PATH_DIR /home/abhi/Documents/VLN-CE-py38/data/checkpoints/rxr_cma_en_20/run_1/ckpt.14.pth RESULTS_DIR /home/abhi/Documents/VLN-CE-py38/data/checkpoints/rxr_cma_en_20/run_1/evals_noisy_gaussian EVAL.SPLIT val_seen EVAL.LANGUAGES "['en-US']" NUM_ENVIRONMENTS 1 EVAL.USE_NOISE True EVAL.NOISE.RGB_NOISE_TYPE "gaussian" EVAL.NOISE.DEPTH_NOISE_TYPE "gaussian" EVAL.NOISE.RGB_STD 0.25 EVAL.NOISE.DEPTH_STD 0.25
 ```
+
+## Run Command
+xvfb-run -a -s "-screen 0 1024x768x24" python run.py \
+  --exp-config vlnce_baselines/config/rxr_baselines/rxr_cma_en.yaml \
+  --run-type train
+"provide a virtual display for all workers"
