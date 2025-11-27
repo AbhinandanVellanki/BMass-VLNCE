@@ -318,3 +318,9 @@ If you use the RxR-Habitat data, please additionally cite the following [paper](
   year={2020}
 }
 ```
+
+## Run Command
+xvfb-run -a -s "-screen 0 1024x768x24" python run.py \
+  --exp-config vlnce_baselines/config/rxr_baselines/rxr_cma_en.yaml \
+  --run-type train
+"provide a virtual display for all workers"
