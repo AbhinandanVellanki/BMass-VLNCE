@@ -237,9 +237,13 @@ data
 *.swp
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 eval_observations
 
 training_observations
 =======
 eval_observations/*
 >>>>>>> 5c9f438 (added eval_observations folder to gitignore)
+=======
+eval_observations
+>>>>>>> e17abbc (eval_observations is a symlink)
