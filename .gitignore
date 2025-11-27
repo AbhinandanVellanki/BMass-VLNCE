@@ -236,6 +236,10 @@ data
 # vim
 *.swp
 
+<<<<<<< HEAD
 eval_observations
 
 training_observations
+=======
+eval_observations/*
+>>>>>>> 5c9f438 (added eval_observations folder to gitignore)
