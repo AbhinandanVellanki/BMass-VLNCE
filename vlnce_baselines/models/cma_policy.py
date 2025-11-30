@@ -359,7 +359,34 @@ class CMANet(Net):
                 self.model_config.PROGRESS_MONITOR.alpha,
             )
 
-        # Return main output, rnn states, and embeddings for aux loss
+        # Add MSE loss between clean and noisy instruction features
+        if AuxLosses.is_active() and hasattr(
+            self.instruction_encoder, "clean_features"
+        ):
+            if (
+                self.instruction_encoder.clean_features is not None
+                and self.instruction_encoder.noisy_features is not None
+            ):
+                # Compute MSE loss between clean and noisy encoded features
+                text_denoising_loss = F.mse_loss(
+                    self.instruction_encoder.noisy_features,
+                    self.instruction_encoder.clean_features.detach(),
+                    reduction="none",
+                )
+                # Average over feature dimension
+                text_denoising_loss = text_denoising_loss.mean(dim=-1)
+
+                # Register the auxiliary loss
+                # You can configure the alpha weight in your config
+                alpha = getattr(
+                    self.model_config, "TEXT_DENOISING_ALPHA", 0.1
+                )
+                AuxLosses.register_loss(
+                    "text_denoising",
+                    text_denoising_loss,
+                    alpha,
+                )
+
         return x, rnn_states_out, {
             'rgb_clean_emb': rgb_clean_emb,
             'rgb_noisy_emb': rgb_noisy_emb,

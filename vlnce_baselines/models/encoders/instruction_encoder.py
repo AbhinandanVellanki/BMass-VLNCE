@@ -60,20 +60,15 @@ class InstructionEncoder(nn.Module):
             embeddings = torch.tensor(json.load(f))
         return embeddings
 
-    def forward(self, observations: Observations) -> Tensor:
-        """
-        Tensor sizes after computation:
-            instruction: [batch_size x seq_length]
-            lengths: [batch_size]
-            hidden_state: [batch_size x hidden_size]
-        """
-        if self.config.sensor_uuid == "instruction":
-            instruction = observations["instruction"].long()
-            lengths = (instruction != 0.0).long().sum(dim=1)
-            instruction = self.embedding_layer(instruction)
-        else:
-            instruction = observations["rxr_instruction"]
+    def _encode_instruction(self, instruction: Tensor) -> Tensor:
+        """Helper method to encode instruction features through the RNN.
 
+        Args:
+            instruction: [batch_size, seq_len, embedding_size]
+
+        Returns:
+            Encoded features: [batch_size, hidden_size, seq_len] or [batch_size, hidden_size]
+        """
         lengths = (instruction != 0.0).long().sum(dim=2)
         lengths = (lengths != 0.0).long().sum(dim=1).cpu()
 
@@ -92,3 +87,37 @@ class InstructionEncoder(nn.Module):
             return nn.utils.rnn.pad_packed_sequence(output, batch_first=True)[
                 0
             ].permute(0, 2, 1)
+
+    def forward(self, observations: Observations) -> Tensor:
+        """
+        Tensor sizes after computation:
+            instruction: [batch_size x seq_length]
+            lengths: [batch_size]
+            hidden_state: [batch_size x hidden_size]
+        """
+        if self.config.sensor_uuid == "instruction":
+            instruction = observations["instruction"].long()
+            lengths = (instruction != 0.0).long().sum(dim=1)
+            instruction = self.embedding_layer(instruction)
+        else:
+            instruction = observations["rxr_instruction"]
+
+            # Check if instruction is dict (contains both clean and noisy)
+            if isinstance(instruction, dict):
+                clean_instruction = instruction["original"]  # [batch_size, 512, 768]
+                noisy_instruction = instruction["noisy"]  # [batch_size, seq_len, 768]
+
+                # Encode both clean and noisy instructions
+                self.clean_features = self._encode_instruction(clean_instruction)
+                self.noisy_features = self._encode_instruction(noisy_instruction)
+
+                # Use noisy features for the downstream VLN model
+                return self.noisy_features
+            else:
+                # Fallback for when only clean instruction is provided
+                # This maintains backward compatibility
+                instruction = instruction
+                self.clean_features = None
+                self.noisy_features = None
+
+        return self._encode_instruction(instruction)

@@ -164,6 +164,10 @@ class RxRInstructionSensor(Sensor):
 
     def __init__(self, *args: Any, config: Config, **kwargs: Any):
         self.features_path = config.features_path
+        self.noisy_features_path = getattr(
+            config, "noisy_features_path", None
+        )
+
         super().__init__(config=config)
 
     def _get_uuid(self, *args: Any, **kwargs: Any) -> str:
@@ -173,16 +177,36 @@ class RxRInstructionSensor(Sensor):
         return SensorTypes.MEASUREMENT
 
     def _get_observation_space(self, *args: Any, **kwargs: Any):
-        return spaces.Box(
-            low=np.finfo(np.float).min,
-            high=np.finfo(np.float).max,
-            shape=(512, 768),
-            dtype=np.float,
-        )
+        # When using dict-style observations, we return a Dict space
+        if self.noisy_features_path is not None:
+            return spaces.Dict(
+                {
+                    "original": spaces.Box(
+                        low=np.finfo(np.float).min,
+                        high=np.finfo(np.float).max,
+                        shape=(512, 768),
+                        dtype=np.float,
+                    ),
+                    "noisy": spaces.Box(
+                        low=np.finfo(np.float).min,
+                        high=np.finfo(np.float).max,
+                        shape=(512, 768),  # Adjust if needed
+                        dtype=np.float,
+                    ),
+                }
+            )
+        else:
+            return spaces.Box(
+                low=np.finfo(np.float).min,
+                high=np.finfo(np.float).max,
+                shape=(512, 768),
+                dtype=np.float,
+            )
 
     def get_observation(
         self, *args: Any, episode: VLNExtendedEpisode, **kwargs
     ):
+        # Load original features
         features = np.load(
             self.features_path.format(
                 split=episode.instruction.split,
@@ -193,4 +217,23 @@ class RxRInstructionSensor(Sensor):
         feats = np.zeros((512, 768), dtype=np.float32)
         s = features["features"].shape
         feats[: s[0], : s[1]] = features["features"]
-        return feats
+
+        # If noisy features path is provided, load both
+        if self.noisy_features_path is not None:
+            noisy_features = np.load(
+                self.noisy_features_path.format(
+                    split=episode.instruction.split,
+                    id=int(episode.instruction.instruction_id),
+                    lang=episode.instruction.language.split("-")[0],
+                )
+            )
+            noisy_feats = np.zeros((512, 768), dtype=np.float32)
+            s_noisy = noisy_features["features"].shape
+            noisy_feats[: s_noisy[0], : s_noisy[1]] = noisy_features["features"]
+
+            return {
+                "original": feats,
+                "noisy": noisy_feats,
+            }
+        else:
+            return feats

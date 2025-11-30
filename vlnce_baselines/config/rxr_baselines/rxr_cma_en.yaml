@@ -9,6 +9,12 @@ EVAL_CKPT_PATH_DIR: data/checkpoints/rxr_cma_en/run_2
 RESULTS_DIR: data/checkpoints/rxr_cma_en/evals/run_2
 # NUM_PROCESSES: 1
 
+TASK_CONFIG:
+  TASK:
+    RXR_INSTRUCTION_SENSOR:
+      # Path to noisy instruction features (set to null or comment out to disable)
+      noisy_features_path: "data/datasets/RxR_VLNCE_v0/noisy_text_features/rxr_{split}/{id:06}_{lang}_noisy_text_features.npz"
+
 INFERENCE:
   SPLIT: test_challenge
   LANGUAGES: [en-US]
@@ -39,11 +45,12 @@ IL:
     preload_size: 30
     preload_trajectories_file: False
     trajectories_file: data/trajectories_dirs/rxr_en_guide_trim250/trajectories.json.gz
-    max_traj_len: 250  # 1.3% of episodes in the English training split are above 250
+    max_traj_len: 250 # 1.3% of episodes in the English training split are above 250
     gt_file: /home/abhi/Documents/VLN-CE-py38/data/datasets/RxR_VLNCE_v0/{split}/{split}_{role}_gt_filtered.json.gz
 
 MODEL:
   policy_name: CMAPolicy
+  TEXT_DENOISING_ALPHA: 0.1 # Weight for MSE loss between clean and noisy text features
   INSTRUCTION_ENCODER:
     bidirectional: True
     sensor_uuid: rxr_instruction
