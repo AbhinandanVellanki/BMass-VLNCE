@@ -52,6 +52,34 @@ IL:
   # batch_size: 1  # Reduced to match single environment
   epochs: 15  # Just 1 epoch for quick visualization
   inflection_weight_coef: 1.9
+  
+  # Enable noise injection during training with probability
+  USE_NOISE_INJECTION: True
+  NOISE_PROBABILITY: 0.20  # 90% chance to apply noise, 10% clean images
+  
+  # RGB noise: 50/50 mix of patch and gaussian when noise is applied (45% each overall)
+  RGB_NOISE_TYPE: "mixed"  # Will randomly choose between patch and gaussian
+  RGB_NOISE_TYPES: ["patch", "gaussian"]  # Types to randomly choose from
+  RGB_NOISE_PARAMS:
+    gaussian:
+      mean: 0
+      std: 0.25  # 25% Gaussian noise
+    patch:
+      num_patches: 10
+      patch_size_range: [20, 60]
+      patch_type: "random"  # random, black, white, gray
+  
+  # Depth noise: always gaussian when noise is applied (90% overall)
+  DEPTH_NOISE_TYPE: "gaussian"
+  DEPTH_NOISE_PARAMS:
+    gaussian:
+      mean: 0
+      std: 0.25  # 25% Gaussian noise
+  
+  # Optional: Save noisy observations for visualization
+  SAVE_NOISY_OBS: True
+  NOISY_OBS_DIR: "training_observations"
+  NOISY_OBS_SAVE_FREQ: 50
 
   RECOLLECT_TRAINER:
     preload_size: 30  # Reduced to match batch size

@@ -45,15 +45,43 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
             save_noisy=True 
         )
         
-        # Initialize noise injector
-        self.noise_injector = ObservationNoiseInjector(
-            rgb_noise_type="gaussian",  # Options: gaussian, salt_pepper, speckle, motion_blur
-            # rgb_noise_type="salt_pepper", 
-            depth_noise_type="gaussian",  # Options: gaussian, dropout, quantization
-            rgb_noise_params={"gaussian": {"mean": 0, "std": 0.25}},  # 50% noise
-            # rgb_noise_params={"salt_pepper": {"amount": 0.5}},
-            depth_noise_params={"gaussian": {"mean": 0, "std": 0.25}}  # 50% noise
-        )
+        # Initialize noise injector from config
+        self.noise_injector = None
+        if hasattr(config.IL, 'USE_NOISE_INJECTION') and config.IL.USE_NOISE_INJECTION:
+            # Get noise probability
+            noise_probability = getattr(config.IL, 'NOISE_PROBABILITY', 1.0)
+            
+            # Get RGB and depth noise types
+            rgb_noise_type = getattr(config.IL, 'RGB_NOISE_TYPE', 'gaussian')
+            depth_noise_type = getattr(config.IL, 'DEPTH_NOISE_TYPE', 'gaussian')
+            
+            # Get RGB noise types for mixed mode
+            rgb_noise_types = None
+            if hasattr(config.IL, 'RGB_NOISE_TYPES'):
+                rgb_noise_types = list(config.IL.RGB_NOISE_TYPES)
+            
+            # Get noise parameters from config if available
+            rgb_noise_params = None
+            if hasattr(config.IL, 'RGB_NOISE_PARAMS'):
+                rgb_noise_params = dict(config.IL.RGB_NOISE_PARAMS)
+            
+            depth_noise_params = None
+            if hasattr(config.IL, 'DEPTH_NOISE_PARAMS'):
+                depth_noise_params = dict(config.IL.DEPTH_NOISE_PARAMS)
+            
+            # Initialize the noise injector
+            self.noise_injector = ObservationNoiseInjector(
+                rgb_noise_type=rgb_noise_type,
+                depth_noise_type=depth_noise_type,
+                rgb_noise_params=rgb_noise_params,
+                depth_noise_params=depth_noise_params,
+                noise_probability=noise_probability,
+                rgb_noise_types=rgb_noise_types
+            )
+            print(f"[Dataset] Initialized noise injector:")
+            print(f"  RGB: {rgb_noise_type} (types: {rgb_noise_types})")
+            print(f"  Depth: {depth_noise_type}")
+            print(f"  Probability: {noise_probability:.2%}")
 
         if config.IL.use_iw:
             self.inflec_weights = torch.tensor(
@@ -216,12 +244,15 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
                 self.config.TASK_CONFIG.TASK.INSTRUCTION_SENSOR_UUID,
             )
             
-            # Inject noise into observations
-            noisy_observations = self.noise_injector.inject_noise(observations)
+            # Inject noise into observations if enabled
+            if self.noise_injector is not None:
+                noisy_observations = self.noise_injector.inject_noise(observations)
+            else:
+                noisy_observations = observations  # Use clean observations if no noise injector
             
-            # Save both original and noisy observations to disk
+            # Save observations to disk (both original and noisy)
             episode_ids = [ep.episode_id for ep in current_episodes]
-            self.obs_saver.save(observations, episode_ids, noisy_observations)
+            self.obs_saver.save(observations, episode_ids, noisy_observations if self.noise_injector else None)
 
             current_episodes = self.envs.current_episodes()
 
@@ -244,10 +275,10 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
                 path_step = self.trajectories[current_episodes[i].episode_id][
                     self.env_step[i]
                 ]
-                # Store NOISY observations for training
+                # Store noisy observations (or clean if noise injector disabled)
                 self._env_observations[i].append(
                     (
-                        noisy_observations[i],  # Use noisy instead of original
+                        noisy_observations[i],  # Use noisy observations for training
                         path_step[0],  # prev_action
                         path_step[2],  # oracle_action
                     )

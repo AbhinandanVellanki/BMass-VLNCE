@@ -1,0 +1,85 @@
+# Example configuration for noise injection during training
+# Add these settings to your training config file (e.g., rxr_cma_en_obs.yaml)
+
+IL:
+  # Enable noise injection during training
+  USE_NOISE_INJECTION: True
+  
+  # Noise type: 'gaussian', 'salt_pepper', 'speckle', 'motion_blur', or 'patch'
+  NOISE_TYPE: 'gaussian'  # Change this to use different noise types
+  
+  # --- For standard noise types (gaussian, salt_pepper, speckle, motion_blur) ---
+  RGB_NOISE_TYPE: 'gaussian'     # Options: gaussian, salt_pepper, speckle, motion_blur
+  DEPTH_NOISE_TYPE: 'gaussian'   # Options: gaussian, dropout, quantization
+  
+  # RGB noise parameters (optional - will use defaults if not specified)
+  RGB_NOISE_PARAMS:
+    gaussian:
+      mean: 0
+      std: 0.1  # 10% noise (adjust as needed)
+    salt_pepper:
+      amount: 0.05  # 5% of pixels affected
+    speckle:
+      std: 0.1  # 10% speckle noise
+    motion_blur:
+      kernel_size: 7  # Motion blur kernel size
+  
+  # Depth noise parameters (optional - will use defaults if not specified)
+  DEPTH_NOISE_PARAMS:
+    gaussian:
+      mean: 0
+      std: 0.1  # 10% depth noise
+    dropout:
+      dropout_prob: 0.05  # 5% pixel dropout
+    quantization:
+      num_levels: 32  # Quantization levels
+  
+  # --- For patch noise type ---
+  # NUM_PATCHES: 5                    # Number of random patches per image
+  # PATCH_SIZE_RANGE: [10, 50]        # Min and max patch size in pixels
+  # PATCH_TYPE: 'random'               # Options: random, black, white, gray
+  
+  # --- Save noisy observations for inspection (optional) ---
+  SAVE_NOISY_OBS: False                # Set to True to save observations to disk
+  NOISY_OBS_DIR: 'training_observations'  # Directory to save observations
+  NOISY_OBS_SAVE_FREQ: 50              # Save every N batches
+
+
+# ===============================================
+# EXAMPLE CONFIGURATIONS FOR DIFFERENT NOISE LEVELS
+# ===============================================
+
+# Low noise (5-10%):
+# RGB_NOISE_PARAMS:
+#   gaussian:
+#     std: 0.05
+# DEPTH_NOISE_PARAMS:
+#   gaussian:
+#     std: 0.05
+
+# Medium noise (20-30%):
+# RGB_NOISE_PARAMS:
+#   gaussian:
+#     std: 0.2
+# DEPTH_NOISE_PARAMS:
+#   gaussian:
+#     std: 0.2
+
+# High noise (50%):
+# RGB_NOISE_PARAMS:
+#   gaussian:
+#     std: 0.5
+# DEPTH_NOISE_PARAMS:
+#   gaussian:
+#     std: 0.5
+
+# Mixed noise types:
+# RGB_NOISE_TYPE: 'motion_blur'
+# DEPTH_NOISE_TYPE: 'dropout'
+
+# Patch occlusion:
+# NOISE_TYPE: 'patch'
+# NUM_PATCHES: 10
+# PATCH_SIZE_RANGE: [20, 80]
+# PATCH_TYPE: 'black'
+

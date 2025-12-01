@@ -9,27 +9,52 @@ class ObservationNoiseInjector:
     """Add various types of noise to RGB and Depth observations"""
     
     def __init__(self, 
-                 rgb_noise_type="gaussian", 
+                 rgb_noise_type="mixed", 
                  depth_noise_type="gaussian",
                  rgb_noise_params=None,
-                 depth_noise_params=None):
+                 depth_noise_params=None,
+                 noise_probability=1.0,
+                 rgb_noise_types=None):
         """
         Args:
-            rgb_noise_type: Type of noise for RGB ("gaussian", "salt_pepper", "speckle", "motion_blur")
+            rgb_noise_type: Type of noise for RGB ("gaussian", "salt_pepper", "speckle", "motion_blur", "mixed", "patch")
             depth_noise_type: Type of noise for depth ("gaussian", "dropout", "quantization")
             rgb_noise_params: Parameters for RGB noise
             depth_noise_params: Parameters for depth noise
+            noise_probability: Probability of applying noise (0.0-1.0). Default 1.0 (always apply)
+            rgb_noise_types: List of noise types to randomly choose from when rgb_noise_type="mixed"
         """
         self.rgb_noise_type = rgb_noise_type
         self.depth_noise_type = depth_noise_type
+        self.noise_probability = noise_probability
+        self.rgb_noise_types = rgb_noise_types if rgb_noise_types is not None else ["gaussian"]
+        
+        # Global step counter for debugging
+        self.step_counter = 0
+        
+        print(f"\n[NoiseInjector] DEBUG: Received parameters:")
+        print(f"  rgb_noise_type: {rgb_noise_type}")
+        print(f"  rgb_noise_types: {rgb_noise_types}")
+        print(f"  noise_probability: {noise_probability}")
+        print(f"  After processing - self.rgb_noise_types: {self.rgb_noise_types}")
         
         # Default parameters
-        self.rgb_noise_params = rgb_noise_params or {
-            "gaussian": {"mean": 0, "std": 0.5},  # 50% noise
+        default_rgb_params = {
+            "gaussian": {"mean": 0, "std": 0.25},  # 50% noise
             "salt_pepper": {"amount": 0.5},
             "speckle": {"std": 0.5},
-            "motion_blur": {"kernel_size": 15}
+            "motion_blur": {"kernel_size": 15},
+            "patch": {"num_patches": 5, "patch_size_range": [10, 50], "patch_type": "random"}
         }
+        
+        # Merge provided params with defaults
+        self.rgb_noise_params = default_rgb_params.copy()
+        if rgb_noise_params:
+            for key, val in rgb_noise_params.items():
+                if key in self.rgb_noise_params:
+                    self.rgb_noise_params[key].update(val)
+                else:
+                    self.rgb_noise_params[key] = val
         
         self.depth_noise_params = depth_noise_params or {
             "gaussian": {"mean": 0, "std": 0.5},  # 50% depth noise
@@ -37,9 +62,27 @@ class ObservationNoiseInjector:
             "quantization": {"num_levels": 10}  # More quantization
         }
         
+        # For mixed type, we need patch injector if patches are in the list
+        self.patch_injector = None
+        if rgb_noise_type == "mixed" and self.rgb_noise_types and "patch" in self.rgb_noise_types:
+            # Get patch parameters from rgb_noise_params
+            patch_params = self.rgb_noise_params.get("patch", {})
+            print(f"\n[PatchInjector] Initializing with params: {patch_params}")
+            self.patch_injector = ObservationNoiseInjectorPatch(
+                num_patches=patch_params.get("num_patches", 5),
+                patch_size_range=tuple(patch_params.get("patch_size_range", [10, 50])),
+                patch_type=patch_params.get("patch_type", "random")
+            )
+        
         print(f"\n[NoiseInjector] Initialized")
         print(f"  RGB noise: {rgb_noise_type}")
-        print(f"  Depth noise: {depth_noise_type}\n")
+        if rgb_noise_type == "mixed":
+            print(f"  RGB noise types: {self.rgb_noise_types}")
+            print(f"  Patch injector: {'Initialized' if self.patch_injector else 'NOT INITIALIZED'}")
+        print(f"  Depth noise: {depth_noise_type}")
+        print(f"  Noise probability: {noise_probability:.2%}")
+        print(f"  RGB params: {self.rgb_noise_params}")
+        print()
     
     def add_gaussian_noise(self, image, mean=0, std=0.02):
         """Add Gaussian noise to image"""
@@ -107,19 +150,39 @@ class ObservationNoiseInjector:
             rgb = rgb.astype(np.float32)
             was_uint8 = False
         
+        # For mixed type, randomly choose a noise type
+        noise_type = self.rgb_noise_type
+        if self.rgb_noise_type == "mixed":
+            random_val = np.random.rand()
+            noise_type = np.random.choice(self.rgb_noise_types)
+            print(f"[RGB Noise] Mixed mode - Random value: {random_val:.4f}, Selected type: {noise_type}")
+        
         # Apply noise based on type
-        if self.rgb_noise_type == "gaussian":
+        if noise_type == "patch":
+            # Use patch injector
+            if self.patch_injector is not None:
+                # Patch injector handles its own format conversion
+                noisy_rgb = self.patch_injector.add_patches(rgb)
+                print(f"[RGB Noise] Applied PATCH noise")
+            else:
+                noisy_rgb = rgb
+                print(f"[RGB Noise] WARNING: Patch injector not initialized, using clean image")
+        elif noise_type == "gaussian":
             params = self.rgb_noise_params.get("gaussian", {})
             noisy_rgb = self.add_gaussian_noise(rgb, **params)
-        elif self.rgb_noise_type == "salt_pepper":
+            # print(f"[RGB Noise] Applied GAUSSIAN noise (std={params.get('std', 0.5)})")
+        elif noise_type == "salt_pepper":
             params = self.rgb_noise_params.get("salt_pepper", {})
             noisy_rgb = self.add_salt_pepper_noise(rgb, **params)
-        elif self.rgb_noise_type == "speckle":
+            print(f"[RGB Noise] Applied SALT_PEPPER noise")
+        elif noise_type == "speckle":
             params = self.rgb_noise_params.get("speckle", {})
             noisy_rgb = self.add_speckle_noise(rgb, **params)
-        elif self.rgb_noise_type == "motion_blur":
+            print(f"[RGB Noise] Applied SPECKLE noise")
+        elif noise_type == "motion_blur":
             params = self.rgb_noise_params.get("motion_blur", {})
             noisy_rgb = self.add_motion_blur(rgb, **params)
+            print(f"[RGB Noise] Applied MOTION_BLUR noise")
         else:
             noisy_rgb = rgb
         
@@ -150,7 +213,7 @@ class ObservationNoiseInjector:
     
     def inject_noise(self, observations):
         """
-        Inject noise into observations
+        Inject noise into observations with probability
         
         Args:
             observations: List of observation dicts or single observation dict
@@ -164,22 +227,39 @@ class ObservationNoiseInjector:
         
         noisy_observations = []
         
-        for obs in observations:
+        for idx, obs in enumerate(observations):
+            # Check if we should apply noise based on probability
+            prob_random = np.random.rand()
+            apply_noise = prob_random <= self.noise_probability
+            
+            print(f"\n[Global Step {self.step_counter}] [Env {idx}] Probability check - Random: {prob_random:.4f}, Threshold: {self.noise_probability:.2f}, Apply noise: {apply_noise}")
+            self.step_counter += 1
+            
+            if not apply_noise:
+                # Return clean observations
+                print(f"[Global Step {self.step_counter-1}] [Env {idx}] Using CLEAN observations (no noise)")
+                noisy_observations.append(obs.copy())
+                continue
+            
             noisy_obs = obs.copy()
             
             # Add noise to RGB
             if "rgb" in obs:
+                print(f"[Global Step {self.step_counter-1}] [Env {idx}] DEBUG: Found 'rgb' in obs, calling inject_rgb_noise()")
                 rgb = obs["rgb"]
                 if torch.is_tensor(rgb):
                     rgb = rgb.cpu().numpy()
                 
                 noisy_rgb = self.inject_rgb_noise(rgb)
+                print(f"[Global Step {self.step_counter-1}] [Env {idx}] DEBUG: inject_rgb_noise() returned successfully")
                 
                 # Convert back to tensor if needed - ENSURE FLOAT32
                 if torch.is_tensor(obs["rgb"]):
                     noisy_obs["rgb"] = torch.from_numpy(noisy_rgb).float()  # Force float32
                 else:
                     noisy_obs["rgb"] = noisy_rgb.astype(np.float32)  # Force float32
+            else:
+                print(f"[Global Step {self.step_counter-1}] [Env {idx}] DEBUG: NO 'rgb' key found in obs! Keys: {obs.keys()}")
             
             # Add noise to depth
             if "depth" in obs:
@@ -188,6 +268,7 @@ class ObservationNoiseInjector:
                     depth = depth.cpu().numpy()
                 
                 noisy_depth = self.inject_depth_noise(depth)
+                # print(f"[Depth Noise] Applied GAUSSIAN noise")
                 
                 # Convert back to tensor if needed - ENSURE FLOAT32
                 if torch.is_tensor(obs["depth"]):

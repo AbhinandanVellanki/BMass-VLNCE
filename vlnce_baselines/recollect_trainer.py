@@ -20,6 +20,13 @@ from vlnce_baselines.common.recollection_dataset import (
 )
 from vlnce_baselines.dagger_trainer import collate_fn
 
+# Import noise injectors
+from observation_image_hook import (
+    ObservationNoiseInjector,
+    ObservationNoiseInjectorPatch,
+    ObservationSaver,
+)
+
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=FutureWarning)
     import tensorflow as tf  # noqa: F401
@@ -137,6 +144,9 @@ class RecollectTrainer(BaseVLNCETrainer):
                         weights_batch,
                     ) = next(diter)
 
+                    # Noise is already applied in the dataset during collection
+                    # No need to apply noise here in the trainer
+                    
                     observations_batch = apply_obs_transforms_batch(
                         {
                             k: v.to(device=self.device, non_blocking=True)
