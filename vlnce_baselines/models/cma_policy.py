@@ -386,7 +386,7 @@ class CMANet(Net):
                     clean_feat,
                     reduction="none",
                 )
-                print(f"text_denoising_loss: {text_denoising_loss.mean()}")
+                # print(f"text_denoising_loss: {text_denoising_loss.mean()}")
 
                 # import pdb; pdb.set_trace()
                 # Average over feature dimension

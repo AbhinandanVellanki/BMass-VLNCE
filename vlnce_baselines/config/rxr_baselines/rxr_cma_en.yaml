@@ -50,7 +50,7 @@ IL:
 
 MODEL:
   policy_name: CMAPolicy
-  TEXT_DENOISING_ALPHA: 10 # Weight for MSE loss between clean and noisy text features
+  TEXT_DENOISING_ALPHA: 1 # Weight for MSE loss between clean and noisy text features
   INSTRUCTION_ENCODER:
     bidirectional: True
     sensor_uuid: rxr_instruction
