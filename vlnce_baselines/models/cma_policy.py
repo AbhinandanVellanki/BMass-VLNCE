@@ -386,11 +386,12 @@ class CMANet(Net):
                     clean_feat,
                     reduction="none",
                 )
-                # print(f"text_denoising_loss: {text_denoising_loss.mean()}")
+                # (a, b, c)
+                print(f"text_denoising_loss: {text_denoising_loss.mean()}")
 
                 # import pdb; pdb.set_trace()
                 # Average over feature dimension
-                text_denoising_loss = text_denoising_loss.sum(dim=[1, -1])
+                text_denoising_loss = text_denoising_loss.sum(dim=[-1]).mean(dim=[-1])
 
                 # Register the auxiliary loss
                 # You can configure the alpha weight in your config
