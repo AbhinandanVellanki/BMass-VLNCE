@@ -37,10 +37,10 @@ class GlobalGPSSensor(Sensor):
 
     def _get_observation_space(self, *args: Any, **kwargs: Any):
         return spaces.Box(
-            low=np.finfo(np.float).min,
-            high=np.finfo(np.float).max,
+            low=np.finfo(np.float32).min,
+            high=np.finfo(np.float32).max,
             shape=(self._dimensionality,),
-            dtype=np.float,
+            dtype=np.float32,
         )
 
     def get_observation(self, *args: Any, **kwargs: Any):
@@ -69,7 +69,7 @@ class VLNOracleProgressSensor(Sensor):
         return SensorTypes.MEASUREMENT
 
     def _get_observation_space(self, *args: Any, **kwargs: Any) -> Space:
-        return spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float)
+        return spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32)
 
     def get_observation(self, *args: Any, episode, **kwargs: Any) -> float:
         distance_to_target = self._sim.geodesic_distance(
@@ -115,7 +115,7 @@ class AngleFeaturesSensor(Sensor):
             low=-1.0,
             high=1.0,
             shape=(self.cameras, 4),
-            dtype=np.float,
+            dtype=np.float32,
         )
 
     def get_observation(self, *args: Any, **kwargs: Any) -> ndarray:
@@ -144,7 +144,7 @@ class ShortestPathSensor(Sensor):
         return SensorTypes.TACTILE
 
     def _get_observation_space(self, *args: Any, **kwargs: Any):
-        return spaces.Box(low=0.0, high=100, shape=(1,), dtype=np.float)
+        return spaces.Box(low=0.0, high=100, shape=(1,), dtype=np.float32)
 
     def get_observation(self, *args: Any, episode, **kwargs: Any):
         best_action = self.follower.get_next_action(episode.goals[0].position)
@@ -182,25 +182,25 @@ class RxRInstructionSensor(Sensor):
             return spaces.Dict(
                 {
                     "original": spaces.Box(
-                        low=np.finfo(np.float).min,
-                        high=np.finfo(np.float).max,
+                        low=np.finfo(np.float32).min,
+                        high=np.finfo(np.float32).max,
                         shape=(512, 768),
-                        dtype=np.float,
+                        dtype=np.float32,
                     ),
                     "noisy": spaces.Box(
-                        low=np.finfo(np.float).min,
-                        high=np.finfo(np.float).max,
+                        low=np.finfo(np.float32).min,
+                        high=np.finfo(np.float32).max,
                         shape=(512, 768),  # Adjust if needed
-                        dtype=np.float,
+                        dtype=np.float32,
                     ),
                 }
             )
         else:
             return spaces.Box(
-                low=np.finfo(np.float).min,
-                high=np.finfo(np.float).max,
+                low=np.finfo(np.float32).min,
+                high=np.finfo(np.float32).max,
                 shape=(512, 768),
-                dtype=np.float,
+                dtype=np.float32,
             )
 
     def get_observation(
@@ -220,16 +220,29 @@ class RxRInstructionSensor(Sensor):
 
         # If noisy features path is provided, load both
         if self.noisy_features_path is not None:
-            noisy_features = np.load(
-                self.noisy_features_path.format(
+            # Deterministic sampling: 20% noisy, 80% clean
+            h = hash(str(episode.instruction.instruction_id)) % 1000
+            
+            if h < 800:  # 80% use clean as noisy
+                noisy_feats = feats.copy()
+            else:  # 20% use actual noisy
+                # Select noise type based on hash
+                noise_types = [(30, "dropout_10"), (60, "dropout_25"), (90, "dropout_50"),
+                               (115, "dropout_75"), (145, "little"), (175, "moderate"), (200, "heavy")]
+                noise_type = next(nt for threshold, nt in noise_types if h - 800 < threshold)[1]
+                
+                noisy_path = self.noisy_features_path.format(
                     split=episode.instruction.split,
                     id=int(episode.instruction.instruction_id),
                     lang=episode.instruction.language.split("-")[0],
-                )
-            )
-            noisy_feats = np.zeros((512, 768), dtype=np.float32)
-            s_noisy = noisy_features["features"].shape
-            noisy_feats[: s_noisy[0], : s_noisy[1]] = noisy_features["features"]
+                ).replace(f"rxr_{episode.instruction.split}/", f"{noise_type}/")
+                
+                
+                noisy_features = np.load(noisy_path)
+
+                noisy_feats = np.zeros((512, 768), dtype=np.float32)
+                s_noisy = noisy_features["features"].shape
+                noisy_feats[: s_noisy[0], : s_noisy[1]] = noisy_features["features"]
 
             return {
                 "original": feats,
