@@ -252,7 +252,15 @@ _C.MODEL.INSTRUCTION_ENCODER.bidirectional = False
 _C.MODEL.RGB_ENCODER = CN()
 _C.MODEL.RGB_ENCODER.cnn_type = "TorchVisionResNet50"
 _C.MODEL.RGB_ENCODER.output_size = 256
-_C.MODEL.RGB_ENCODER.trainable = False
+
+# Vision encoder training strategy options:
+# "full" - all parameters trainable
+# "freeze" - all parameters frozen
+# "partial" - only last layer trainable
+# "lora" - LoRA adapters (if implemented)
+_C.MODEL.VISION_ENCODER_TRAINING = "full"  # Options: "full", "freeze", "partial", "lora"
+
+_C.MODEL.RGB_ENCODER.trainable = True  # Deprecated, use VISION_ENCODER_TRAINING
 
 _C.MODEL.DEPTH_ENCODER = CN()
 _C.MODEL.DEPTH_ENCODER.cnn_type = "VlnResnetDepthEncoder"
@@ -263,7 +271,7 @@ _C.MODEL.DEPTH_ENCODER.backbone = "resnet50"
 _C.MODEL.DEPTH_ENCODER.ddppo_checkpoint = (
     "data/ddppo-models/gibson-2plus-resnet50.pth"
 )
-_C.MODEL.DEPTH_ENCODER.trainable = False
+_C.MODEL.DEPTH_ENCODER.trainable = True  # Deprecated, use VISION_ENCODER_TRAINING
 
 _C.MODEL.STATE_ENCODER = CN()
 _C.MODEL.STATE_ENCODER.hidden_size = 512

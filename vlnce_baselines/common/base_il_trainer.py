@@ -262,20 +262,38 @@ class BaseVLNCETrainer(BaseILTrainer):
         action_loss = ((weights * action_loss).sum(0) / weights.sum(0)).mean()
 
         # Auxiliary reconstruction loss between clean and noisy embeddings
-        # Only compute if embeddings are present in distribution.extra_outputs
-        recon_loss = 0.0
+        # Only used to train the vision encoder, not added to total loss
         extra = getattr(distribution, 'extra_outputs', None)
+        recon_loss = None
         if extra is not None:
-            # MSE between clean and noisy embeddings for RGB and depth
+            # Compute mask for samples where clean and noisy images differ
+            rgb_diff = (extra['rgb_clean_emb'] - extra['rgb_noisy_emb']).abs().sum(dim=(1,2))
+            depth_diff = (extra['depth_clean_emb'] - extra['depth_noisy_emb']).abs().sum(dim=(1,2))
+            aug_mask = ((rgb_diff > 0) | (depth_diff > 0)).float()  # shape: [batch]
+            # Only compute loss for augmented samples
             mse_rgb = F.mse_loss(extra['rgb_clean_emb'], extra['rgb_noisy_emb'], reduction="none")
             mse_depth = F.mse_loss(extra['depth_clean_emb'], extra['depth_noisy_emb'], reduction="none")
-            # Mean over batch and embedding dims
-            recon_loss = (mse_rgb.mean() + mse_depth.mean())
-            AuxLosses.register_loss("reconstruction", recon_loss, alpha=1.0)
+            # Mean over embedding dims, keep batch
+            mse_rgb = mse_rgb.mean(dim=(1,2))
+            mse_depth = mse_depth.mean(dim=(1,2))
+            recon_loss = ((mse_rgb + mse_depth) * aug_mask).sum() / (aug_mask.sum() + 1e-6)
+            # Only backprop vision encoder
+            if recon_loss > 0:
+                self.optimizer.zero_grad()
+                recon_loss.backward()
+                # Only update vision encoder params
+                for group in self.optimizer.param_groups:
+                    for p in group['params']:
+                        if hasattr(p, 'vision_encoder'):  # If optimizer is set up to tag vision encoder params
+                            p.grad = p.grad
+                        else:
+                            p.grad = None
+                self.optimizer.step()
 
         aux_mask = (weights > 0).view(-1)
         aux_loss = AuxLosses.reduce(aux_mask)
 
+        # Only action and aux losses contribute to main loss
         loss = action_loss + aux_loss
         loss = loss / loss_accumulation_scalar
         loss.backward()

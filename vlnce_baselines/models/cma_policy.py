@@ -70,6 +70,25 @@ class CMANet(Net):
 
         # Init the depth encoder
         assert model_config.DEPTH_ENCODER.cnn_type in ["VlnResnetDepthEncoder"]
+
+        # Vision encoder training strategy
+        vision_train_mode = getattr(model_config, "VISION_ENCODER_TRAINING", "full")
+        if vision_train_mode == "full":
+            rgb_trainable = True
+            depth_trainable = True
+        elif vision_train_mode == "freeze":
+            rgb_trainable = False
+            depth_trainable = False
+        elif vision_train_mode == "partial":
+            rgb_trainable = False
+            depth_trainable = False
+        elif vision_train_mode == "lora":
+            rgb_trainable = False  # Placeholder, set up LoRA adapters here if implemented
+            depth_trainable = False
+        else:
+            rgb_trainable = True
+            depth_trainable = True
+
         self.depth_encoder = getattr(
             resnet_encoders, model_config.DEPTH_ENCODER.cnn_type
         )(
@@ -77,11 +96,10 @@ class CMANet(Net):
             output_size=model_config.DEPTH_ENCODER.output_size,
             checkpoint=model_config.DEPTH_ENCODER.ddppo_checkpoint,
             backbone=model_config.DEPTH_ENCODER.backbone,
-            trainable=model_config.DEPTH_ENCODER.trainable,
+            trainable=depth_trainable,
             spatial_output=True,
         )
 
-        # Init the RGB visual encoder
         assert model_config.RGB_ENCODER.cnn_type in [
             "TorchVisionResNet18",
             "TorchVisionResNet50",
@@ -91,9 +109,29 @@ class CMANet(Net):
         )(
             model_config.RGB_ENCODER.output_size,
             normalize_visual_inputs=model_config.normalize_rgb,
-            trainable=model_config.RGB_ENCODER.trainable,
+            trainable=rgb_trainable,
             spatial_output=True,
         )
+
+        # If partial, unfreeze last layer(s) of encoder by index for modularity
+        if vision_train_mode == "partial":
+            # Freeze all params first
+            for param in self.rgb_encoder.parameters():
+                param.requires_grad = False
+            for param in self.depth_encoder.parameters():
+                param.requires_grad = False
+
+            # Unfreeze last layer(s) of RGB encoder
+            rgb_modules = list(self.rgb_encoder.modules())
+            if len(rgb_modules) > 0:
+                for param in rgb_modules[-1].parameters():
+                    param.requires_grad = True
+
+            # Unfreeze last layer(s) of Depth encoder
+            depth_modules = list(self.depth_encoder.modules())
+            if len(depth_modules) > 0:
+                for param in depth_modules[-1].parameters():
+                    param.requires_grad = True
 
         self.prev_action_embedding = nn.Embedding(num_actions + 1, 32)
 
