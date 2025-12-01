@@ -262,25 +262,29 @@ class BaseVLNCETrainer(BaseILTrainer):
         action_loss = ((weights * action_loss).sum(0) / weights.sum(0)).mean()
 
         # Auxiliary reconstruction loss between clean and noisy embeddings
-        # Only used to train the vision encoder, not added to total loss
         extra = getattr(distribution, 'extra_outputs', None)
         recon_loss = None
         print(f"DEBUG: extra_outputs present? {extra is not None}. Keys: {list(extra.keys()) if extra is not None else 'None'}")
         if extra is not None:
-            # Compute mask for samples where clean and noisy images differ
-            rgb_diff = (extra['rgb_clean_emb'] - extra['rgb_noisy_emb']).abs().sum(dim=(1,2))
-            depth_diff = (extra['depth_clean_emb'] - extra['depth_noisy_emb']).abs().sum(dim=(1,2))
-            aug_mask = ((rgb_diff > 0) | (depth_diff > 0)).float()  # shape: [batch]
-            # Only compute loss for augmented samples
+            # Compute per-sample reconstruction loss (keep batch dimension for masking)
             mse_rgb = F.mse_loss(extra['rgb_clean_emb'], extra['rgb_noisy_emb'], reduction="none")
             mse_depth = F.mse_loss(extra['depth_clean_emb'], extra['depth_noisy_emb'], reduction="none")
-            # Mean over embedding dims, keep batch
+            # Mean over embedding dimensions, keep batch dimension: [batch, seq, emb] -> [batch]
             mse_rgb = mse_rgb.mean(dim=(1,2))
             mse_depth = mse_depth.mean(dim=(1,2))
-            recon_loss = ((mse_rgb + mse_depth) * aug_mask).sum() / (aug_mask.sum() + 1e-6)
-            print(f"Reconstruction Loss: {recon_loss.item():.6f} (Augmented samples: {aug_mask.sum().item()}/{aug_mask.size(0)})")
-            # Register reconstruction loss as auxiliary loss
-            AuxLosses.register_loss('vision_emnedding_loss', recon_loss)
+            # Total reconstruction loss per sample
+            recon_loss = mse_rgb + mse_depth  # shape: [batch]
+            
+            # Compute how many samples actually have noise for logging
+            rgb_diff = (extra['rgb_clean_emb'] - extra['rgb_noisy_emb']).abs().sum(dim=(1,2))
+            depth_diff = (extra['depth_clean_emb'] - extra['depth_noisy_emb']).abs().sum(dim=(1,2))
+            aug_mask = ((rgb_diff > 0) | (depth_diff > 0)).float()
+            print(f"Reconstruction Loss: {recon_loss.mean().item():.6f} (Augmented samples: {aug_mask.sum().item()}/{aug_mask.size(0)})")
+            
+            # Register reconstruction loss as auxiliary loss with weight
+            # AuxLosses.reduce() will handle the masking based on valid timesteps
+            aux_weight = getattr(self.config.IL, 'aux_loss_weight', 1.0)
+            AuxLosses.register_loss('vision_embedding_loss', recon_loss, alpha=aux_weight)
 
         aux_mask = (weights > 0).view(-1)
         aux_loss = AuxLosses.reduce(aux_mask)
