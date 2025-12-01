@@ -251,45 +251,49 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
                 noisy_observations = observations  # Use clean observations if no noise injector
             # Save observations to disk (both original and noisy)
             episode_ids = [ep.episode_id for ep in current_episodes]
-            self.obs_saver.save(observations, episode_ids, noisy_observations if self.noise_injector else None)
+            # self.obs_saver.save(observations, episode_ids, noisy_observations if self.noise_injector else None)
 
             current_episodes = self.envs.current_episodes()
 
             for i in range(self.envs.num_envs):
-                self.env_step[i] += 1
-                if dones[i]:
-                    assert len(self._env_observations[i]) == len(
-                        self.trajectories[prev_eps[i].episode_id]
-                    ), "Collected episode does not match the step count of trajectory"
-                    self._preload.append(
+                    self.env_step[i] += 1
+                    if dones[i]:
+                        assert len(self._env_observations[i]) == len(
+                            self.trajectories[prev_eps[i].episode_id]
+                        ), "Collected episode does not match the step count of trajectory"
+                        self._preload.append(
+                            (
+                                [o[0] for o in self._env_observations[i]],  # dict with clean and noisy
+                                [o[1] for o in self._env_observations[i]],
+                                [o[2] for o in self._env_observations[i]],
+                            )
+                        )
+                        self._env_observations[i] = []
+                        self.env_step[i] = 0
+
+                    path_step = self.trajectories[current_episodes[i].episode_id][
+                        self.env_step[i]
+                    ]
+                    # Store clean and noisy observations
+                    obs_pair = {}
+                    for k in observations[i]:
+                        obs_pair[k] = observations[i][k]  # keep original clean key
+                        # Always set noisy key: if not present, use clean
+                        if k in noisy_observations[i]:
+                            obs_pair[f"{k}_noisy"] = noisy_observations[i][k]
+                        else:
+                            obs_pair[f"{k}_noisy"] = observations[i][k]
+                    self._env_observations[i].append(
                         (
-                            [o[0] for o in self._env_observations[i]],  # dict with clean and noisy
-                            [o[1] for o in self._env_observations[i]],
-                            [o[2] for o in self._env_observations[i]],
+                            obs_pair,
+                            path_step[0],  # prev_action
+                            path_step[2],  # oracle_action
                         )
                     )
-                    self._env_observations[i] = []
-                    self.env_step[i] = 0
-
-                path_step = self.trajectories[current_episodes[i].episode_id][
-                    self.env_step[i]
-                ]
-                # Store both clean and noisy observations
-                obs_pair = {}
-                for k in observations[i]:
-                    obs_pair[f"{k}_clean"] = observations[i][k]
-                    obs_pair[f"{k}_noisy"] = noisy_observations[i][k]
-                self._env_observations[i].append(
-                    (
-                        obs_pair,
-                        path_step[0],  # prev_action
-                        path_step[2],  # oracle_action
-                    )
-                )
-                assert (
-                    len(self._env_observations[i])
-                    <= self.config.TASK_CONFIG.ENVIRONMENT.MAX_EPISODE_STEPS
-                ), "Trajectories should be no more than the maximum episode steps."
+                    assert (
+                        len(self._env_observations[i])
+                        <= self.config.TASK_CONFIG.ENVIRONMENT.MAX_EPISODE_STEPS
+                    ), "Trajectories should be no more than the maximum episode steps."
 
         return self._preload.popleft()
 

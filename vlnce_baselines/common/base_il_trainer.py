@@ -265,6 +265,7 @@ class BaseVLNCETrainer(BaseILTrainer):
         # Only used to train the vision encoder, not added to total loss
         extra = getattr(distribution, 'extra_outputs', None)
         recon_loss = None
+        print(f"DEBUG: extra_outputs present? {extra is not None}. Keys: {list(extra.keys()) if extra is not None else 'None'}")
         if extra is not None:
             # Compute mask for samples where clean and noisy images differ
             rgb_diff = (extra['rgb_clean_emb'] - extra['rgb_noisy_emb']).abs().sum(dim=(1,2))
@@ -277,18 +278,9 @@ class BaseVLNCETrainer(BaseILTrainer):
             mse_rgb = mse_rgb.mean(dim=(1,2))
             mse_depth = mse_depth.mean(dim=(1,2))
             recon_loss = ((mse_rgb + mse_depth) * aug_mask).sum() / (aug_mask.sum() + 1e-6)
-            # Only backprop vision encoder
-            if recon_loss > 0:
-                self.optimizer.zero_grad()
-                recon_loss.backward()
-                # Only update vision encoder params
-                for group in self.optimizer.param_groups:
-                    for p in group['params']:
-                        if hasattr(p, 'vision_encoder'):  # If optimizer is set up to tag vision encoder params
-                            p.grad = p.grad
-                        else:
-                            p.grad = None
-                self.optimizer.step()
+            print(f"Reconstruction Loss: {recon_loss.item():.6f} (Augmented samples: {aug_mask.sum().item()}/{aug_mask.size(0)})")
+            # Register reconstruction loss as auxiliary loss
+            AuxLosses.register_loss('vision_emnedding_loss', recon_loss)
 
         aux_mask = (weights > 0).view(-1)
         aux_loss = AuxLosses.reduce(aux_mask)

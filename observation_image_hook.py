@@ -1,4 +1,3 @@
-
 import os
 import cv2
 import numpy as np
@@ -67,22 +66,22 @@ class ObservationNoiseInjector:
         if rgb_noise_type == "mixed" and self.rgb_noise_types and "patch" in self.rgb_noise_types:
             # Get patch parameters from rgb_noise_params
             patch_params = self.rgb_noise_params.get("patch", {})
-            print(f"\n[PatchInjector] Initializing with params: {patch_params}")
+            # print(f"\n[PatchInjector] Initializing with params: {patch_params}")
             self.patch_injector = ObservationNoiseInjectorPatch(
                 num_patches=patch_params.get("num_patches", 5),
                 patch_size_range=tuple(patch_params.get("patch_size_range", [10, 50])),
                 patch_type=patch_params.get("patch_type", "random")
             )
         
-        print(f"\n[NoiseInjector] Initialized")
-        print(f"  RGB noise: {rgb_noise_type}")
-        if rgb_noise_type == "mixed":
-            print(f"  RGB noise types: {self.rgb_noise_types}")
-            print(f"  Patch injector: {'Initialized' if self.patch_injector else 'NOT INITIALIZED'}")
-        print(f"  Depth noise: {depth_noise_type}")
-        print(f"  Noise probability: {noise_probability:.2%}")
-        print(f"  RGB params: {self.rgb_noise_params}")
-        print()
+        # print(f"\n[NoiseInjector] Initialized")
+        # print(f"  RGB noise: {rgb_noise_type}")
+        # if rgb_noise_type == "mixed":
+        #     print(f"  RGB noise types: {self.rgb_noise_types}")
+        #     print(f"  Patch injector: {'Initialized' if self.patch_injector else 'NOT INITIALIZED'}")
+        # print(f"  Depth noise: {depth_noise_type}")
+        # print(f"  Noise probability: {noise_probability:.2%}")
+        # print(f"  RGB params: {self.rgb_noise_params}")
+        # print()
     
     def add_gaussian_noise(self, image, mean=0, std=0.02):
         """Add Gaussian noise to image"""
@@ -140,7 +139,7 @@ class ObservationNoiseInjector:
             quantized = depth
         return quantized
     
-    def inject_rgb_noise(self, rgb):
+    def inject_rgb_noise(self, rgb, reference_shape=None):
         """Inject noise into RGB image"""
         # Normalize to [0, 1] if needed
         if rgb.max() > 1.0:
@@ -155,26 +154,20 @@ class ObservationNoiseInjector:
         if self.rgb_noise_type == "mixed":
             random_val = np.random.rand()
             noise_type = np.random.choice(self.rgb_noise_types)
-            print(f"[RGB Noise] Mixed mode - Random value: {random_val:.4f}, Selected type: {noise_type}")
         
         # Apply noise based on type
         if noise_type == "patch":
             # Use patch injector
             if self.patch_injector is not None:
-                # Patch injector handles its own format conversion
                 noisy_rgb = self.patch_injector.add_patches(rgb)
-                print(f"[RGB Noise] Applied PATCH noise")
             else:
                 noisy_rgb = rgb
-                print(f"[RGB Noise] WARNING: Patch injector not initialized, using clean image")
         elif noise_type == "gaussian":
             params = self.rgb_noise_params.get("gaussian", {})
             noisy_rgb = self.add_gaussian_noise(rgb, **params)
-            # print(f"[RGB Noise] Applied GAUSSIAN noise (std={params.get('std', 0.5)})")
         elif noise_type == "salt_pepper":
             params = self.rgb_noise_params.get("salt_pepper", {})
             noisy_rgb = self.add_salt_pepper_noise(rgb, **params)
-            print(f"[RGB Noise] Applied SALT_PEPPER noise")
         elif noise_type == "speckle":
             params = self.rgb_noise_params.get("speckle", {})
             noisy_rgb = self.add_speckle_noise(rgb, **params)
@@ -186,13 +179,20 @@ class ObservationNoiseInjector:
         else:
             noisy_rgb = rgb
         
+        # Ensure output shape matches reference_shape if provided
+        if reference_shape is not None and noisy_rgb.shape != reference_shape:
+            h, w = reference_shape[:2]
+            noisy_rgb = cv2.resize(noisy_rgb, (w, h), interpolation=cv2.INTER_LINEAR)
+            if len(reference_shape) == 3 and noisy_rgb.ndim == 2:
+                noisy_rgb = noisy_rgb[..., None]
+        
         # Convert back to uint8 if needed
         if was_uint8:
             noisy_rgb = (np.clip(noisy_rgb, 0, 1) * 255).astype(np.uint8)
         
         return noisy_rgb
     
-    def inject_depth_noise(self, depth):
+    def inject_depth_noise(self, depth, reference_shape=None):
         """Inject noise into depth image"""
         depth = depth.astype(np.float32)
         
@@ -208,6 +208,13 @@ class ObservationNoiseInjector:
             noisy_depth = self.add_depth_quantization(depth, **params)
         else:
             noisy_depth = depth
+        
+        # Ensure output shape matches reference_shape if provided
+        if reference_shape is not None and noisy_depth.shape != reference_shape:
+            h, w = reference_shape[:2]
+            noisy_depth = cv2.resize(noisy_depth, (w, h), interpolation=cv2.INTER_LINEAR)
+            if len(reference_shape) == 3 and noisy_depth.ndim == 2:
+                noisy_depth = noisy_depth[..., None]
         
         return noisy_depth
     
@@ -232,12 +239,12 @@ class ObservationNoiseInjector:
             prob_random = np.random.rand()
             apply_noise = prob_random <= self.noise_probability
             
-            print(f"\n[Global Step {self.step_counter}] [Env {idx}] Probability check - Random: {prob_random:.4f}, Threshold: {self.noise_probability:.2f}, Apply noise: {apply_noise}")
+            # print(f"\n[Global Step {self.step_counter}] [Env {idx}] Probability check - Random: {prob_random:.4f}, Threshold: {self.noise_probability:.2f}, Apply noise: {apply_noise}")
             self.step_counter += 1
             
             if not apply_noise:
                 # Return clean observations
-                print(f"[Global Step {self.step_counter-1}] [Env {idx}] Using CLEAN observations (no noise)")
+                # print(f"[Global Step {self.step_counter-1}] [Env {idx}] Using CLEAN observations (no noise)")
                 noisy_observations.append(obs.copy())
                 continue
             
@@ -245,13 +252,13 @@ class ObservationNoiseInjector:
             
             # Add noise to RGB
             if "rgb" in obs:
-                print(f"[Global Step {self.step_counter-1}] [Env {idx}] DEBUG: Found 'rgb' in obs, calling inject_rgb_noise()")
+                # print(f"[Global Step {self.step_counter-1}] [Env {idx}] DEBUG: Found 'rgb' in obs, calling inject_rgb_noise()")
                 rgb = obs["rgb"]
                 if torch.is_tensor(rgb):
                     rgb = rgb.cpu().numpy()
-                
-                noisy_rgb = self.inject_rgb_noise(rgb)
-                print(f"[Global Step {self.step_counter-1}] [Env {idx}] DEBUG: inject_rgb_noise() returned successfully")
+                reference_shape = rgb.shape
+                noisy_rgb = self.inject_rgb_noise(rgb, reference_shape=reference_shape)
+                # print(f"[Global Step {self.step_counter-1}] [Env {idx}] DEBUG: inject_rgb_noise() returned successfully")
                 
                 # Convert back to tensor if needed - ENSURE FLOAT32
                 if torch.is_tensor(obs["rgb"]):
@@ -259,15 +266,15 @@ class ObservationNoiseInjector:
                 else:
                     noisy_obs["rgb"] = noisy_rgb.astype(np.float32)  # Force float32
             else:
-                print(f"[Global Step {self.step_counter-1}] [Env {idx}] DEBUG: NO 'rgb' key found in obs! Keys: {obs.keys()}")
+                pass  # No 'rgb' key found in obs
             
             # Add noise to depth
             if "depth" in obs:
                 depth = obs["depth"]
                 if torch.is_tensor(depth):
                     depth = depth.cpu().numpy()
-                
-                noisy_depth = self.inject_depth_noise(depth)
+                reference_shape = depth.shape
+                noisy_depth = self.inject_depth_noise(depth, reference_shape=reference_shape)
                 # print(f"[Depth Noise] Applied GAUSSIAN noise")
                 
                 # Convert back to tensor if needed - ENSURE FLOAT32

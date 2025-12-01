@@ -7,19 +7,19 @@ NUM_ENVIRONMENTS: 1 # Reduced to 1 to avoid multiprocessing issues
 NUM_PROCESSES: 1
 
 # Modified directories for observation visualization - won't overwrite existing checkpoints
-TENSORBOARD_DIR: data/tensorboard_dirs/rxr_cma_en_obs_visualization
-CHECKPOINT_FOLDER: data/checkpoints/rxr_cma_en_obs_visualization
-EVAL_CKPT_PATH_DIR: data/checkpoints/rxr_cma_en_obs_visualization
-RESULTS_DIR: data/checkpoints/rxr_cma_en_obs_visualization/evals
-LOG_FILE: train_obs_visualization.log
+TENSORBOARD_DIR: data/tensorboard_dirs/rxr_cma_en_dirty_vision
+CHECKPOINT_FOLDER: data/checkpoints/rxr_cma_en_dirty_vision
+EVAL_CKPT_PATH_DIR: data/checkpoints/rxr_cma_en_dirty_vision
+RESULTS_DIR: data/checkpoints/rxr_cma_en_dirty_vision/evals
+LOG_FILE: data/logs/rxr_cma_en_dirty_vision/run1.log
 
 INFERENCE:
   SPLIT: test_challenge
   LANGUAGES: [en-US]
   SAMPLE: True
   USE_CKPT_CONFIG: False
-  CKPT_PATH: data/checkpoints/rxr_cma_en_obs_visualization/ckpt.14.pth
-  PREDICTIONS_FILE: rxr_cma_en_obs_test_challenge.jsonl
+  CKPT_PATH: data/checkpoints/rxr_cma_en_dirty_vision/ckpt.14.pth
+  PREDICTIONS_FILE: rxr_cma_en_dirty_vision_test_challenge.jsonl
   FORMAT: rxr
 
 EVAL:
@@ -55,7 +55,7 @@ IL:
   
   # Enable noise injection during training with probability
   USE_NOISE_INJECTION: True
-  NOISE_PROBABILITY: 0.20  # 90% chance to apply noise, 10% clean images
+  NOISE_PROBABILITY: 0.20  # 20% chance to apply noise, 80% clean images
   
   # RGB noise: 50/50 mix of patch and gaussian when noise is applied (45% each overall)
   RGB_NOISE_TYPE: "mixed"  # Will randomly choose between patch and gaussian

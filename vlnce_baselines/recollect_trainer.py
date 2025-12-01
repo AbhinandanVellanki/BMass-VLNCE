@@ -144,17 +144,35 @@ class RecollectTrainer(BaseVLNCETrainer):
                         weights_batch,
                     ) = next(diter)
 
-                    # observations_batch now contains keys like 'rgb_clean', 'rgb_noisy', etc.
+                    # observations_batch now contains keys like 'rgb', 'rgb_noisy', 'depth', 'depth_noisy', etc.
                     # Noise is already applied in the dataset during collection
-                    # No need to apply noise here in the trainer
-
+                    # Apply obs transforms to both clean and noisy observations
+                    
+                    # Move observations to device
+                    observations_batch = {
+                        k: v.to(device=self.device, non_blocking=True)
+                        for k, v in observations_batch.items()
+                    }
+                    
+                    # Apply transforms to clean observations (rgb, depth, etc.)
                     observations_batch = apply_obs_transforms_batch(
-                        {
-                            k: v.to(device=self.device, non_blocking=True)
-                            for k, v in observations_batch.items()
-                        },
+                        observations_batch,
                         dataset.obs_transforms,
                     )
+                    
+                    # Apply same transforms to noisy observations by temporarily renaming keys
+                    # This ensures rgb_noisy and depth_noisy get the same resizing as rgb and depth
+                    noisy_keys = [k for k in observations_batch.keys() if k.endswith('_noisy')]
+                    for noisy_key in noisy_keys:
+                        # Extract base key (e.g., 'rgb' from 'rgb_noisy')
+                        base_key = noisy_key.replace('_noisy', '')
+                        if base_key in ['rgb', 'depth']:  # Only apply to visual observations
+                            # Temporarily rename for transform
+                            temp_obs = {base_key: observations_batch[noisy_key]}
+                            # Apply same transforms
+                            temp_obs = apply_obs_transforms_batch(temp_obs, dataset.obs_transforms)
+                            # Put back with noisy suffix
+                            observations_batch[noisy_key] = temp_obs[base_key]
 
                     prev_actions_batch = prev_actions_batch.to(
                         device=self.device, non_blocking=True

@@ -258,7 +258,7 @@ _C.MODEL.RGB_ENCODER.output_size = 256
 # "freeze" - all parameters frozen
 # "partial" - only last layer trainable
 # "lora" - LoRA adapters (if implemented)
-_C.MODEL.VISION_ENCODER_TRAINING = "full"  # Options: "full", "freeze", "partial", "lora"
+_C.MODEL.VISION_ENCODER_TRAINING = "partial"  # Options: "full", "freeze", "partial", "lora"
 
 _C.MODEL.RGB_ENCODER.trainable = True  # Deprecated, use VISION_ENCODER_TRAINING
 

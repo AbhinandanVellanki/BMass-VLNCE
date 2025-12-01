@@ -43,6 +43,7 @@ class ILPolicy(Policy, metaclass=abc.ABCMeta):
 
         return action, rnn_states
 
+
     def get_value(self, *args: Any, **kwargs: Any):
         raise NotImplementedError
 
@@ -51,8 +52,26 @@ class ILPolicy(Policy, metaclass=abc.ABCMeta):
 
     def build_distribution(
         self, observations, rnn_states, prev_actions, masks
-    ) -> CustomFixedCategorical:
-        features, rnn_states = self.net(
-            observations, rnn_states, prev_actions, masks
-        )
-        return self.action_distribution(features)
+    ):
+        # Unpack extra_outputs from model forward
+        result = self.net(observations, rnn_states, prev_actions, masks)
+        if isinstance(result, tuple) and len(result) == 3:
+            features, rnn_states, extra_outputs = result
+        else:
+            features, rnn_states = result
+            extra_outputs = None
+        dist = self.action_distribution(features)
+        return AuxDistribution(dist, extra_outputs)
+
+class AuxDistribution:
+    def __init__(self, dist, extra_outputs):
+        self._dist = dist
+        self.extra_outputs = extra_outputs
+        # Copy all attributes from dist
+        for k, v in dist.__dict__.items():
+            setattr(self, k, v)
+        # Ensure logits is accessible
+        if hasattr(dist, 'logits'):
+            self.logits = dist.logits
+    def __getattr__(self, name):
+        return getattr(self._dist, name)
