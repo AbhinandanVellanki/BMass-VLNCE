@@ -261,6 +261,18 @@ class BaseVLNCETrainer(BaseILTrainer):
         )
         action_loss = ((weights * action_loss).sum(0) / weights.sum(0)).mean()
 
+        # Auxiliary reconstruction loss between clean and noisy embeddings
+        # Only compute if embeddings are present in distribution.extra_outputs
+        recon_loss = 0.0
+        extra = getattr(distribution, 'extra_outputs', None)
+        if extra is not None:
+            # MSE between clean and noisy embeddings for RGB and depth
+            mse_rgb = F.mse_loss(extra['rgb_clean_emb'], extra['rgb_noisy_emb'], reduction="none")
+            mse_depth = F.mse_loss(extra['depth_clean_emb'], extra['depth_noisy_emb'], reduction="none")
+            # Mean over batch and embedding dims
+            recon_loss = (mse_rgb.mean() + mse_depth.mean())
+            AuxLosses.register_loss("reconstruction", recon_loss, alpha=1.0)
+
         aux_mask = (weights > 0).view(-1)
         aux_loss = AuxLosses.reduce(aux_mask)
 

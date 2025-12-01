@@ -222,13 +222,24 @@ class CMANet(Net):
         rnn_states: Tensor,
         prev_actions: Tensor,
         masks: Tensor,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> Tuple[Tensor, Tensor, Dict[str, Tensor]]:
         instruction_embedding = self.instruction_encoder(observations)
-        depth_embedding = self.depth_encoder(observations)
-        depth_embedding = torch.flatten(depth_embedding, 2)
 
-        rgb_embedding = self.rgb_encoder(observations)
-        rgb_embedding = torch.flatten(rgb_embedding, 2)
+        # Compute clean and noisy depth embeddings
+        depth_clean_emb = self.depth_encoder({**observations, 'depth': observations.get('depth_clean', observations.get('depth'))})
+        depth_clean_emb = torch.flatten(depth_clean_emb, 2)
+        depth_noisy_emb = self.depth_encoder({**observations, 'depth': observations.get('depth_noisy', observations.get('depth'))})
+        depth_noisy_emb = torch.flatten(depth_noisy_emb, 2)
+
+        # Compute clean and noisy rgb embeddings
+        rgb_clean_emb = self.rgb_encoder({**observations, 'rgb': observations.get('rgb_clean', observations.get('rgb'))})
+        rgb_clean_emb = torch.flatten(rgb_clean_emb, 2)
+        rgb_noisy_emb = self.rgb_encoder({**observations, 'rgb': observations.get('rgb_noisy', observations.get('rgb'))})
+        rgb_noisy_emb = torch.flatten(rgb_noisy_emb, 2)
+
+        # Use noisy embeddings for main policy (default behavior)
+        rgb_embedding = rgb_noisy_emb
+        depth_embedding = depth_noisy_emb
 
         prev_actions = self.prev_action_embedding(
             ((prev_actions.float() + 1) * masks).long().view(-1)
@@ -306,4 +317,10 @@ class CMANet(Net):
                 self.model_config.PROGRESS_MONITOR.alpha,
             )
 
-        return x, rnn_states_out
+        # Return main output, rnn states, and embeddings for aux loss
+        return x, rnn_states_out, {
+            'rgb_clean_emb': rgb_clean_emb,
+            'rgb_noisy_emb': rgb_noisy_emb,
+            'depth_clean_emb': depth_clean_emb,
+            'depth_noisy_emb': depth_noisy_emb,
+        }

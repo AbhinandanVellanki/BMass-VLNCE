@@ -249,7 +249,6 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
                 noisy_observations = self.noise_injector.inject_noise(observations)
             else:
                 noisy_observations = observations  # Use clean observations if no noise injector
-            
             # Save observations to disk (both original and noisy)
             episode_ids = [ep.episode_id for ep in current_episodes]
             self.obs_saver.save(observations, episode_ids, noisy_observations if self.noise_injector else None)
@@ -264,7 +263,7 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
                     ), "Collected episode does not match the step count of trajectory"
                     self._preload.append(
                         (
-                            [o[0] for o in self._env_observations[i]],
+                            [o[0] for o in self._env_observations[i]],  # dict with clean and noisy
                             [o[1] for o in self._env_observations[i]],
                             [o[2] for o in self._env_observations[i]],
                         )
@@ -275,10 +274,14 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
                 path_step = self.trajectories[current_episodes[i].episode_id][
                     self.env_step[i]
                 ]
-                # Store noisy observations (or clean if noise injector disabled)
+                # Store both clean and noisy observations
+                obs_pair = {}
+                for k in observations[i]:
+                    obs_pair[f"{k}_clean"] = observations[i][k]
+                    obs_pair[f"{k}_noisy"] = noisy_observations[i][k]
                 self._env_observations[i].append(
                     (
-                        noisy_observations[i],  # Use noisy observations for training
+                        obs_pair,
                         path_step[0],  # prev_action
                         path_step[2],  # oracle_action
                     )
@@ -297,12 +300,11 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
         x = self._load_next()
         obs, prev_actions, oracle_actions = x
 
-        # transpose obs
+        # transpose obs (now contains clean and noisy keys)
         obs_t = defaultdict(list)
         for k in obs[0]:
             for i in range(len(obs)):
                 obs_t[k].append(obs[i][k])
-
             obs_t[k] = np.array(obs_t[k])
 
         for k, v in obs_t.items():

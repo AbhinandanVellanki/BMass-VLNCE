@@ -64,6 +64,7 @@ def collate_fn(batch):
     B = len(prev_actions_batch)
 
     new_observations_batch = defaultdict(list)
+    # Now sensors include keys like 'rgb_clean', 'rgb_noisy', etc.
     for sensor in observations_batch[0]:
         for bid in range(B):
             new_observations_batch[sensor].append(

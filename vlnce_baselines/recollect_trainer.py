@@ -144,9 +144,10 @@ class RecollectTrainer(BaseVLNCETrainer):
                         weights_batch,
                     ) = next(diter)
 
+                    # observations_batch now contains keys like 'rgb_clean', 'rgb_noisy', etc.
                     # Noise is already applied in the dataset during collection
                     # No need to apply noise here in the trainer
-                    
+
                     observations_batch = apply_obs_transforms_batch(
                         {
                             k: v.to(device=self.device, non_blocking=True)
