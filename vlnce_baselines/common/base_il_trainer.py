@@ -266,14 +266,14 @@ class BaseVLNCETrainer(BaseILTrainer):
         recon_loss = None
         print(f"DEBUG: extra_outputs present? {extra is not None}. Keys: {list(extra.keys()) if extra is not None else 'None'}")
         if extra is not None:
-            # Compute per-sample reconstruction loss (keep batch dimension for masking)
+            # Compute per-sample reconstruction loss
+            # Embeddings are already flattened to [T*N, seq, emb]
             mse_rgb = F.mse_loss(extra['rgb_clean_emb'], extra['rgb_noisy_emb'], reduction="none")
             mse_depth = F.mse_loss(extra['depth_clean_emb'], extra['depth_noisy_emb'], reduction="none")
-            # Mean over embedding dimensions, keep batch dimension: [batch, seq, emb] -> [batch]
+            # Mean over embedding dimensions: [T*N, seq, emb] -> [T*N]
             mse_rgb = mse_rgb.mean(dim=(1,2))
             mse_depth = mse_depth.mean(dim=(1,2))
-            # Total reconstruction loss per sample
-            recon_loss = mse_rgb + mse_depth  # shape: [batch]
+            recon_loss = mse_rgb + mse_depth  # shape: [T*N] - keep flattened to match aux_mask
             
             # Compute how many samples actually have noise for logging
             rgb_diff = (extra['rgb_clean_emb'] - extra['rgb_noisy_emb']).abs().sum(dim=(1,2))
@@ -281,8 +281,7 @@ class BaseVLNCETrainer(BaseILTrainer):
             aug_mask = ((rgb_diff > 0) | (depth_diff > 0)).float()
             print(f"Reconstruction Loss: {recon_loss.mean().item():.6f} (Augmented samples: {aug_mask.sum().item()}/{aug_mask.size(0)})")
             
-            # Register reconstruction loss as auxiliary loss with weight
-            # AuxLosses.reduce() will handle the masking based on valid timesteps
+            # Register with weight - keep flattened [T*N] to match aux_mask shape
             aux_weight = getattr(self.config.IL, 'aux_loss_weight', 1.0)
             AuxLosses.register_loss('vision_embedding_loss', recon_loss, alpha=aux_weight)
 

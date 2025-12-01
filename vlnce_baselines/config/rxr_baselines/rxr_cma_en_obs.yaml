@@ -5,10 +5,8 @@ TORCH_GPU_ID: 0
 # NUM_ENVIRONMENTS: 8  # Reduced to 1 to avoid multiprocessing issues
 NUM_ENVIRONMENTS: 1 # Reduced to 1 to avoid multiprocessing issues
 NUM_PROCESSES: 1
-
-# Modified directories for observation visualization - won't overwrite existing checkpoints
 TENSORBOARD_DIR: data/tensorboard_dirs/rxr_cma_en_dirty_vision
-CHECKPOINT_FOLDER: data/checkpoints/rxr_cma_en_dirty_vision
+CHECKPOINT_FOLDER: data/checkpoints/rxr_cma_en_dirty_vision/run1
 EVAL_CKPT_PATH_DIR: data/checkpoints/rxr_cma_en_dirty_vision
 RESULTS_DIR: data/checkpoints/rxr_cma_en_dirty_vision/evals
 LOG_FILE: data/logs/rxr_cma_en_dirty_vision/run1.log
@@ -52,10 +50,11 @@ IL:
   # batch_size: 1  # Reduced to match single environment
   epochs: 15  # Just 1 epoch for quick visualization
   inflection_weight_coef: 1.9
+  aux_loss_weight: 2.0  # Weight for auxiliary losses (vision embedding reconstruction)
   
   # Enable noise injection during training with probability
   USE_NOISE_INJECTION: True
-  NOISE_PROBABILITY: 0.20  # 20% chance to apply noise, 80% clean images
+  NOISE_PROBABILITY: 0.50  # 50% chance to apply noise, 50% clean images
   
   # RGB noise: 50/50 mix of patch and gaussian when noise is applied (45% each overall)
   RGB_NOISE_TYPE: "mixed"  # Will randomly choose between patch and gaussian
