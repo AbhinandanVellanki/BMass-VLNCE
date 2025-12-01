@@ -368,13 +368,29 @@ class CMANet(Net):
                 and self.instruction_encoder.noisy_features is not None
             ):
                 # Compute MSE loss between clean and noisy encoded features
+                noisy_feat = self.instruction_encoder.noisy_features
+                clean_feat = self.instruction_encoder.clean_features.detach()
+                # Handle sequence length mismatch by padding to the same length
+                if noisy_feat.shape[-1] != clean_feat.shape[-1]:
+                    max_len = max(noisy_feat.shape[-1], clean_feat.shape[-1])
+                    if noisy_feat.shape[-1] < max_len:
+                        pad_size = max_len - noisy_feat.shape[-1]
+                        noisy_feat = F.pad(noisy_feat, (0, pad_size))
+                    if clean_feat.shape[-1] < max_len:
+                        pad_size = max_len - clean_feat.shape[-1]
+                        clean_feat = F.pad(clean_feat, (0, pad_size))
+
+                # Compute MSE loss between clean and noisy encoded features
                 text_denoising_loss = F.mse_loss(
-                    self.instruction_encoder.noisy_features,
-                    self.instruction_encoder.clean_features.detach(),
+                    noisy_feat,
+                    clean_feat,
                     reduction="none",
                 )
+                print(f"text_denoising_loss: {text_denoising_loss.mean()}")
+
+                # import pdb; pdb.set_trace()
                 # Average over feature dimension
-                text_denoising_loss = text_denoising_loss.mean(dim=-1)
+                text_denoising_loss = text_denoising_loss.sum(dim=[1, -1])
 
                 # Register the auxiliary loss
                 # You can configure the alpha weight in your config

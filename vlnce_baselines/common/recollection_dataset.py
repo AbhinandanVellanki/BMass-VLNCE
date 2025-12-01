@@ -20,7 +20,7 @@ from vlnce_baselines.common.utils import extract_instruction_tokens
 
 # Import observation image hook (combined saver and noise injector)
 from observation_image_hook import (
-    ObservationSaver, 
+    ObservationSaver,
     ObservationNoiseInjector,
     ObservationNoiseInjectorPatch
 )
@@ -37,38 +37,38 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
         ), "preload size must be greater than batch size."
         self.envs = None
         self._env_observations = None
-        
+
         # Initialize observation saver
         self.obs_saver = ObservationSaver(
             save_dir="training_observations",
-            save_frequency=250, 
-            save_noisy=True 
+            save_frequency=250,
+            save_noisy=True
         )
-        
+
         # Initialize noise injector from config
         self.noise_injector = None
         if hasattr(config.IL, 'USE_NOISE_INJECTION') and config.IL.USE_NOISE_INJECTION:
             # Get noise probability
             noise_probability = getattr(config.IL, 'NOISE_PROBABILITY', 1.0)
-            
+
             # Get RGB and depth noise types
             rgb_noise_type = getattr(config.IL, 'RGB_NOISE_TYPE', 'gaussian')
             depth_noise_type = getattr(config.IL, 'DEPTH_NOISE_TYPE', 'gaussian')
-            
+
             # Get RGB noise types for mixed mode
             rgb_noise_types = None
             if hasattr(config.IL, 'RGB_NOISE_TYPES'):
                 rgb_noise_types = list(config.IL.RGB_NOISE_TYPES)
-            
+
             # Get noise parameters from config if available
             rgb_noise_params = None
             if hasattr(config.IL, 'RGB_NOISE_PARAMS'):
                 rgb_noise_params = dict(config.IL.RGB_NOISE_PARAMS)
-            
+
             depth_noise_params = None
             if hasattr(config.IL, 'DEPTH_NOISE_PARAMS'):
                 depth_noise_params = dict(config.IL.DEPTH_NOISE_PARAMS)
-            
+
             # Initialize the noise injector
             self.noise_injector = ObservationNoiseInjector(
                 rgb_noise_type=rgb_noise_type,
@@ -243,7 +243,7 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
                 observations,
                 self.config.TASK_CONFIG.TASK.INSTRUCTION_SENSOR_UUID,
             )
-            
+
             # Inject noise into observations if enabled
             if self.noise_injector is not None:
                 noisy_observations = self.noise_injector.inject_noise(observations)
@@ -306,13 +306,48 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
 
         # transpose obs (now contains clean and noisy keys)
         obs_t = defaultdict(list)
-        for k in obs[0]:
-            for i in range(len(obs)):
-                obs_t[k].append(obs[i][k])
-            obs_t[k] = np.array(obs_t[k])
+        # for k in obs[0]:
+        #     for i in range(len(obs)):
+        #         obs_t[k].append(obs[i][k])
 
-        for k, v in obs_t.items():
-            obs_t[k] = torch.from_numpy(np.copy(v))
+        #     obs_t[k] = np.array(obs_t[k])
+        # for k, v in obs_t.items():
+        #     print(k)
+        #     print(type(v))
+        #     print(v.dtype)
+        #     print(hasattr(v, "items"))
+        #     # print(v)
+        #     if hasattr(v, "items"):
+        #         # recursively convert inner dict
+        #         obs_t[k] = {
+        #             kk: torch.as_tensor(vv) for kk, vv in v.items()
+        #         }
+        #     else:
+        #         obs_t[k] = torch.from_numpy(np.copy(v))
+        B = len(obs)
+        # Collate each key across the batch
+        for k in obs[0].keys():
+            first_val = obs[0][k]
+
+            # Case 1: per-sample value is a dict (e.g. rxr instructions)
+            if hasattr(first_val, "items"):
+                # Keep as list of dicts or process specially
+                # Here we just keep a list of dicts; you can further process if needed
+                for sk in first_val.keys():
+                    vals = [obs[i][k][sk] for i in range(B)]
+                    arr = np.array(vals)
+                    obs_t[f'{k}:{sk}'] = torch.from_numpy(np.copy(arr))
+            else:
+                # Case 2: normal numeric / array-like values
+                vals = [obs[i][k] for i in range(B)]
+                arr = np.array(vals)
+
+                # If it's become an object array, you may need more logic,
+                # but for standard numeric obs this should be fine.
+                if arr.dtype == np.object_:
+                    raise TypeError(f"Key {k} collated to object array; value example: {vals[0]}")
+                obs_t[k] = torch.from_numpy(np.copy(arr))
+                # obs_t[k] = torch.as_tensor(arr)  # or torch.from_numpy(arr)
 
         prev_actions = torch.from_numpy(np.copy(prev_actions))
         oracle_actions = torch.from_numpy(np.copy(oracle_actions))

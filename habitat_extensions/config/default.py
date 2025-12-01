@@ -27,7 +27,8 @@ _C.TASK.ORACLE_ACTION_SENSOR.GOAL_RADIUS = 0.5
 # ----------------------------------------------------------------------------
 _C.TASK.RXR_INSTRUCTION_SENSOR = CN()
 _C.TASK.RXR_INSTRUCTION_SENSOR.TYPE = "RxRInstructionSensor"
-_C.TASK.RXR_INSTRUCTION_SENSOR.features_path = "data/datasets/RxR_VLNCE_v0/text_features/rxr_{split}/{id:06}_{lang}_text_features.npz"
+#_C.TASK.RXR_INSTRUCTION_SENSOR.features_path = "data/datasets/RxR_VLNCE_v0/text_features/rxr_{split}/{id:06}_{lang}_text_features.npz"
+_C.TASK.RXR_INSTRUCTION_SENSOR.features_path = "data/bert_features/text_features/rxr_{split}/{id:06}_{lang}_text_features.npz"
 _C.TASK.RXR_INSTRUCTION_SENSOR.noisy_features_path = None  # Optional: path to noisy instruction features
 _C.TASK.INSTRUCTION_SENSOR_UUID = "rxr_instruction"
 # ----------------------------------------------------------------------------

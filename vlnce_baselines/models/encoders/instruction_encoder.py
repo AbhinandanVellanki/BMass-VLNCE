@@ -30,7 +30,7 @@ class InstructionEncoder(nn.Module):
             hidden_size=config.hidden_size,
             bidirectional=config.bidirectional,
         )
-
+        # import pdb; pdb.set_trace()
         if config.sensor_uuid == "instruction":
             if self.config.use_pretrained_embeddings:
                 self.embedding_layer = nn.Embedding.from_pretrained(
@@ -100,12 +100,10 @@ class InstructionEncoder(nn.Module):
             lengths = (instruction != 0.0).long().sum(dim=1)
             instruction = self.embedding_layer(instruction)
         else:
-            instruction = observations["rxr_instruction"]
-
             # Check if instruction is dict (contains both clean and noisy)
-            if isinstance(instruction, dict):
-                clean_instruction = instruction["original"]  # [batch_size, 512, 768]
-                noisy_instruction = instruction["noisy"]  # [batch_size, seq_len, 768]
+            if "rxr_instruction" not in observations:
+                clean_instruction = observations["rxr_instruction:original"]  # [batch_size, 512, 768]
+                noisy_instruction = observations["rxr_instruction:noisy"]  # [batch_size, seq_len, 768]
 
                 # Encode both clean and noisy instructions
                 self.clean_features = self._encode_instruction(clean_instruction)
@@ -116,7 +114,7 @@ class InstructionEncoder(nn.Module):
             else:
                 # Fallback for when only clean instruction is provided
                 # This maintains backward compatibility
-                instruction = instruction
+                instruction = observations["rxr_instruction"]  # [batch_size, seq_len, 768]
                 self.clean_features = None
                 self.noisy_features = None
 

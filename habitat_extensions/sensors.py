@@ -1,3 +1,5 @@
+import os
+import json
 from copy import deepcopy
 from typing import Any
 
@@ -167,6 +169,14 @@ class RxRInstructionSensor(Sensor):
         self.noisy_features_path = getattr(
             config, "noisy_features_path", None
         )
+        # Load the noisy instruction mapping
+        self.noisy_instruction_mapping = None
+        if self.noisy_features_path is not None:
+            mapping_path = "/home/ubuntu/BMass-VLNCE/data/datasets/RxR_VLNCE_v0/noisy_instruction_mapping.json"
+            if os.path.exists(mapping_path):
+                with open(mapping_path, "r") as f:
+                    self.noisy_instruction_mapping = json.load(f)
+                print(f"Loaded {len(self.noisy_instruction_mapping)} noisy instruction mappings")
 
         super().__init__(config=config)
 
@@ -177,6 +187,12 @@ class RxRInstructionSensor(Sensor):
         return SensorTypes.MEASUREMENT
 
     def _get_observation_space(self, *args: Any, **kwargs: Any):
+        # return spaces.Box(
+        #         low=np.finfo(np.float32).min,
+        #         high=np.finfo(np.float32).max,
+        #         shape=(512, 768),
+        #         dtype=np.float32,
+        #     )
         # When using dict-style observations, we return a Dict space
         if self.noisy_features_path is not None:
             return spaces.Dict(
@@ -206,6 +222,7 @@ class RxRInstructionSensor(Sensor):
     def get_observation(
         self, *args: Any, episode: VLNExtendedEpisode, **kwargs
     ):
+        # import pdb; pdb.set_trace()
         # Load original features
         features = np.load(
             self.features_path.format(
@@ -217,32 +234,38 @@ class RxRInstructionSensor(Sensor):
         feats = np.zeros((512, 768), dtype=np.float32)
         s = features["features"].shape
         feats[: s[0], : s[1]] = features["features"]
+        # return feats
 
         # If noisy features path is provided, load both
         if self.noisy_features_path is not None:
-            # Deterministic sampling: 20% noisy, 80% clean
-            h = hash(str(episode.instruction.instruction_id)) % 1000
-            
-            if h < 800:  # 80% use clean as noisy
-                noisy_feats = feats.copy()
-            else:  # 20% use actual noisy
-                # Select noise type based on hash
-                noise_types = [(30, "dropout_10"), (60, "dropout_25"), (90, "dropout_50"),
-                               (115, "dropout_75"), (145, "little"), (175, "moderate"), (200, "heavy")]
-                noise_type = next(nt for threshold, nt in noise_types if h - 800 < threshold)[1]
-                
+            inst_id_str = str(int(episode.instruction.instruction_id))
+
+            # Check if this instruction should use noisy features
+            if self.noisy_instruction_mapping and inst_id_str in self.noisy_instruction_mapping:
+                # Get the noise type for this instruction
+                noise_type = self.noisy_instruction_mapping[inst_id_str]
+                # print(f"NOISE TTPE: {noise_type}")
+                # print(f"NOISE {inst_id_str} HAI?: {inst_id_str in self.noisy_instruction_mapping}")
+                # Build the path to the noisy file
                 noisy_path = self.noisy_features_path.format(
                     split=episode.instruction.split,
                     id=int(episode.instruction.instruction_id),
                     lang=episode.instruction.language.split("-")[0],
                 ).replace(f"rxr_{episode.instruction.split}/", f"{noise_type}/")
-                
-                
-                noisy_features = np.load(noisy_path)
 
-                noisy_feats = np.zeros((512, 768), dtype=np.float32)
-                s_noisy = noisy_features["features"].shape
-                noisy_feats[: s_noisy[0], : s_noisy[1]] = noisy_features["features"]
+                # Load noisy features
+                try:
+                    noisy_features = np.load(noisy_path)
+                    noisy_feats = np.zeros((512, 768), dtype=np.float32)
+                    s_noisy = noisy_features["features"].shape
+                    noisy_feats[: s_noisy[0], : s_noisy[1]] = noisy_features["features"]
+                    # print("HERE")
+                except FileNotFoundError:
+                    # noisy_feats = feats.copy()
+                    raise FileNotFoundError(f"Noisy features file not found at: {noisy_path} {noise_type}")
+            else:
+                # Use clean features for instructions not in mapping
+                noisy_feats = feats.copy()
 
             return {
                 "original": feats,

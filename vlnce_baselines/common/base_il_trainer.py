@@ -63,21 +63,21 @@ class BaseVLNCETrainer(BaseILTrainer):
         self.start_epoch = 0
         self.step_id = 0
         self.eval_noise_injector = None  # Initialize noise injector for eval
-    
+
     def _initialize_eval_noise_injector(self, config):
         """Initialize noise injectors for evaluation if enabled in config"""
         if not config.EVAL.USE_NOISE or not NOISE_INJECTOR_AVAILABLE:
             return None
-        
+
         logger.info("=" * 80)
         logger.info("INITIALIZING NOISE INJECTION FOR EVALUATION")
         logger.info("=" * 80)
-        
+
         if config.EVAL.NOISE.RGB_NOISE_TYPE == "patch":
             # Use patch noise for RGB
             rgb_injector = ObservationNoiseInjectorPatch(
                 num_patches=config.EVAL.NOISE.PATCH_NUM,
-                patch_size_range=(config.EVAL.NOISE.PATCH_SIZE_MIN, 
+                patch_size_range=(config.EVAL.NOISE.PATCH_SIZE_MIN,
                                  config.EVAL.NOISE.PATCH_SIZE_MAX),
                 patch_type=config.EVAL.NOISE.PATCH_TYPE,
                 patch_color=None
@@ -109,12 +109,12 @@ class BaseVLNCETrainer(BaseILTrainer):
             # no noise
             logger.info("No valid noise type specified, skipping noise injection.\n")
             return None
-    
+
     def _initialize_eval_observation_saver(self, config):
         """Initialize observation saver for evaluation visualization"""
         if not NOISE_INJECTOR_AVAILABLE:
             return None
-        
+
         # Create saver for eval observations - use absolute path to avoid permission issues
         save_dir ="eval_observations"
         save_noisy = config.EVAL.USE_NOISE  # Only save noisy if noise is enabled
@@ -127,12 +127,12 @@ class BaseVLNCETrainer(BaseILTrainer):
         logger.info(f"  Saving to: {save_dir}/")
         logger.info(f"  Save noisy: {save_noisy}\n")
         return saver
-    
+
     def _inject_noise_to_observations(self, observations):
         """Inject noise into observations if noise injector is initialized"""
         if self.eval_noise_injector is None:
             return observations
-        
+
         # Handle two separate injectors (patch + depth)
         if isinstance(self.eval_noise_injector, tuple):
             rgb_injector, depth_injector = self.eval_noise_injector
@@ -142,7 +142,7 @@ class BaseVLNCETrainer(BaseILTrainer):
         else:
             # Single injector for both
             return self.eval_noise_injector.inject_noise(observations)
-    
+
     def _save_eval_observations(self, observations, noisy_observations, episode_ids, saver):
         """Save both clean and noisy observations during evaluation"""
         if saver is not None:
@@ -162,10 +162,16 @@ class BaseVLNCETrainer(BaseILTrainer):
             action_space=action_space,
         )
         self.policy.to(self.device)
-
+        # import pdb; pdb.set_trace()
         self.optimizer = torch.optim.Adam(
             self.policy.parameters(), lr=self.config.IL.lr
         )
+        # print("\nParameters passed to optimizer:")
+        # for i, group in enumerate(self.optimizer.param_groups):
+        #     print(f"\nParam group {i}:")
+        #     for p in group['params']:
+        #         print(f" - {p.shape}, requires_grad={p.requires_grad}")
+
         if load_from_ckpt:
             ckpt_path = config.IL.ckpt_to_load
             ckpt_dict = self.load_checkpoint(ckpt_path, map_location="cpu")
@@ -274,21 +280,24 @@ class BaseVLNCETrainer(BaseILTrainer):
             mse_rgb = mse_rgb.mean(dim=(1,2))
             mse_depth = mse_depth.mean(dim=(1,2))
             recon_loss = mse_rgb + mse_depth  # shape: [T*N] - keep flattened to match aux_mask
-            
+
             # Compute how many samples actually have noise for logging
             rgb_diff = (extra['rgb_clean_emb'] - extra['rgb_noisy_emb']).abs().sum(dim=(1,2))
             depth_diff = (extra['depth_clean_emb'] - extra['depth_noisy_emb']).abs().sum(dim=(1,2))
             aug_mask = ((rgb_diff > 0) | (depth_diff > 0)).float()
             print(f"Reconstruction Loss: {recon_loss.mean().item():.6f} (Augmented samples: {aug_mask.sum().item()}/{aug_mask.size(0)})")
-            
+
             # Register with weight - keep flattened [T*N] to match aux_mask shape
             aux_weight = getattr(self.config.IL, 'aux_loss_weight', 1.0)
             AuxLosses.register_loss('vision_embedding_loss', recon_loss, alpha=aux_weight)
 
         aux_mask = (weights > 0).view(-1)
+        # import pdb; pdb.set_trace()
         aux_loss = AuxLosses.reduce(aux_mask)
 
         # Only action and aux losses contribute to main loss
+
+
         loss = action_loss + aux_loss
         loss = loss / loss_accumulation_scalar
         loss.backward()
@@ -404,7 +413,7 @@ class BaseVLNCETrainer(BaseILTrainer):
             self.eval_noise_injector = self._initialize_eval_noise_injector(config)
             if self.eval_noise_injector is None:
                 logger.warning("Eval noise injector not initialized despite config setting.")
-        
+
         # Initialize observation saver for visualization
         eval_obs_saver = self._initialize_eval_observation_saver(config)
 
@@ -412,18 +421,18 @@ class BaseVLNCETrainer(BaseILTrainer):
         observations = extract_instruction_tokens(
             observations, self.config.TASK_CONFIG.TASK.INSTRUCTION_SENSOR_UUID
         )
-        
+
         # Store clean observations for saving
         clean_observations = [obs.copy() for obs in observations]
-        
+
         # Inject noise into initial observations
         noisy_observations = self._inject_noise_to_observations(observations)
-        
+
         # Save initial observations (clean and noisy)
         current_episodes = envs.current_episodes()
         episode_ids = [ep.episode_id for ep in current_episodes]
         self._save_eval_observations(clean_observations, noisy_observations, episode_ids, eval_obs_saver)
-        
+
         # Use noisy observations for the model
         observations = noisy_observations
         batch = batch_obs(observations, self.device)
@@ -527,18 +536,18 @@ class BaseVLNCETrainer(BaseILTrainer):
                 observations,
                 self.config.TASK_CONFIG.TASK.INSTRUCTION_SENSOR_UUID,
             )
-            
+
             # Store clean observations for saving
             clean_observations = [obs.copy() for obs in observations]
-            
+
             # Inject noise into observations after environment step
             noisy_observations = self._inject_noise_to_observations(observations)
-            
+
             # Save observations (clean and noisy) for visualization
             current_episodes = envs.current_episodes()
             episode_ids = [ep.episode_id for ep in current_episodes]
             self._save_eval_observations(clean_observations, noisy_observations, episode_ids, eval_obs_saver)
-            
+
             # Use noisy observations for the model
             observations = noisy_observations
             batch = batch_obs(observations, self.device)
