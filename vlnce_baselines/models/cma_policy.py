@@ -367,9 +367,11 @@ class CMANet(Net):
                 self.instruction_encoder.clean_features is not None
                 and self.instruction_encoder.noisy_features is not None
             ):
+
                 # Compute MSE loss between clean and noisy encoded features
                 noisy_feat = self.instruction_encoder.noisy_features
                 clean_feat = self.instruction_encoder.clean_features.detach()
+
                 # Handle sequence length mismatch by padding to the same length
                 if noisy_feat.shape[-1] != clean_feat.shape[-1]:
                     max_len = max(noisy_feat.shape[-1], clean_feat.shape[-1])
@@ -379,7 +381,11 @@ class CMANet(Net):
                     if clean_feat.shape[-1] < max_len:
                         pad_size = max_len - clean_feat.shape[-1]
                         clean_feat = F.pad(clean_feat, (0, pad_size))
-
+                print("same object:", noisy_feat is clean_feat)
+                print("same storage:", noisy_feat.data_ptr() == clean_feat.data_ptr())
+                print("max abs diff:", (noisy_feat - clean_feat).abs().max())
+                print("clean norm:", clean_feat.norm())
+                print("noisy norm:", noisy_feat.norm())
                 # Compute MSE loss between clean and noisy encoded features
                 text_denoising_loss = F.mse_loss(
                     noisy_feat,
@@ -387,11 +393,14 @@ class CMANet(Net):
                     reduction="none",
                 )
                 # (a, b, c)
-                print(f"text_denoising_loss: {text_denoising_loss.mean()}")
 
                 # import pdb; pdb.set_trace()
                 # Average over feature dimension
-                text_denoising_loss = text_denoising_loss.sum(dim=[-1]).mean(dim=[-1])
+                print(text_denoising_loss.shape)
+                text_denoising_loss = text_denoising_loss.mean(dim=[1, -1])
+                print(f"text_denoising_loss: {text_denoising_loss}")
+
+                # text_denoising_loss = text_denoising_loss.sum(dim=[-1]).mean(dim=[-1])
 
                 # Register the auxiliary loss
                 # You can configure the alpha weight in your config
