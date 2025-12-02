@@ -30,8 +30,8 @@ EVAL:
   # Enable noisy observations during evaluation (same as training)
   USE_NOISE: True
   NOISE:
-    RGB_NOISE_TYPE: "gaussian"  # Options: gaussian, salt_pepper, speckle, motion_blur, patch
-    DEPTH_NOISE_TYPE: "gaussian"  # Options: gaussian, dropout, quantization
+    RGB_NOISE_TYPE: "patch"  # Options: gaussian, salt_pepper, speckle, motion_blur, patch
+    DEPTH_NOISE_TYPE: "patch"  # Options: gaussian, dropout, quantization
     RGB_STD: 0.25  # Standard deviation for RGB noise (25%)
     DEPTH_STD: 0.25  # Standard deviation for depth noise (25%)
     # Patch noise parameters (only used when RGB_NOISE_TYPE: "patch")
