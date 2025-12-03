@@ -68,47 +68,52 @@ class BaseVLNCETrainer(BaseILTrainer):
         """Initialize noise injectors for evaluation if enabled in config"""
         if not config.EVAL.USE_NOISE or not NOISE_INJECTOR_AVAILABLE:
             return None
-        
+
         logger.info("=" * 80)
         logger.info("INITIALIZING NOISE INJECTION FOR EVALUATION")
         logger.info("=" * 80)
+
+        # Get noise probability (default to 1.0 for eval - always apply noise)
+        noise_probability = getattr(config.EVAL, 'NOISE_PROBABILITY', 1.0)
         
-        if config.EVAL.NOISE.RGB_NOISE_TYPE == "patch":
-            # Use patch noise for RGB
-            rgb_injector = ObservationNoiseInjectorPatch(
-                num_patches=config.EVAL.NOISE.PATCH_NUM,
-                patch_size_range=(config.EVAL.NOISE.PATCH_SIZE_MIN, 
-                                 config.EVAL.NOISE.PATCH_SIZE_MAX),
-                patch_type=config.EVAL.NOISE.PATCH_TYPE,
-                patch_color=None
-            )
-            # Use standard noise for depth
-            depth_injector = ObservationNoiseInjector(
-                rgb_noise_type="gaussian",  # Dummy, won't be used
-                depth_noise_type=config.EVAL.NOISE.DEPTH_NOISE_TYPE,
-                rgb_noise_params={"gaussian": {"mean": 0, "std": 0.0}},
-                depth_noise_params={"gaussian": {"mean": 0, "std": config.EVAL.NOISE.DEPTH_STD}}
-            )
-            logger.info(f"  RGB: Patch noise ({config.EVAL.NOISE.PATCH_NUM} patches)")
-            logger.info(f"  Depth: {config.EVAL.NOISE.DEPTH_NOISE_TYPE} (std={config.EVAL.NOISE.DEPTH_STD})")
-            logger.info("=" * 80 + "\n")
-            return (rgb_injector, depth_injector)
-        if config.EVAL.NOISE.RGB_NOISE_TYPE == "gaussian":
-            # Use standard (Gaussian) noise injector for both RGB and depth
-            noise_injector = ObservationNoiseInjector(
-                rgb_noise_type=config.EVAL.NOISE.RGB_NOISE_TYPE,
-                depth_noise_type=config.EVAL.NOISE.DEPTH_NOISE_TYPE,
-                rgb_noise_params={"gaussian": {"mean": 0, "std": config.EVAL.NOISE.RGB_STD}},
-                depth_noise_params={"gaussian": {"mean": 0, "std": config.EVAL.NOISE.DEPTH_STD}}
-            )
-            logger.info(f"  RGB: {config.EVAL.NOISE.RGB_NOISE_TYPE} (std={config.EVAL.NOISE.RGB_STD})")
-            logger.info(f"  Depth: {config.EVAL.NOISE.DEPTH_NOISE_TYPE} (std={config.EVAL.NOISE.DEPTH_STD})")
-            logger.info("=" * 80 + "\n")
-            return noise_injector
-        else:
-            # no noise
-            logger.info("No valid noise type specified, skipping noise injection.\n")
-            return None
+        # Get RGB and Depth noise types
+        rgb_noise_type = getattr(config.EVAL, 'RGB_NOISE_TYPE', 'gaussian')
+        depth_noise_type = getattr(config.EVAL, 'DEPTH_NOISE_TYPE', 'gaussian')
+        
+        # Get RGB noise types for mixed mode
+        rgb_noise_types = None
+        if hasattr(config.EVAL, 'RGB_NOISE_TYPES'):
+            rgb_noise_types = list(config.EVAL.RGB_NOISE_TYPES)
+        
+        # Get noise parameters from config if available
+        rgb_noise_params = None
+        if hasattr(config.EVAL, 'RGB_NOISE_PARAMS'):
+            rgb_noise_params = dict(config.EVAL.RGB_NOISE_PARAMS)
+        
+        depth_noise_params = None
+        if hasattr(config.EVAL, 'DEPTH_NOISE_PARAMS'):
+            depth_noise_params = dict(config.EVAL.DEPTH_NOISE_PARAMS)
+
+        # Initialize the unified noise injector with support for both RGB and depth patches
+        noise_injector = ObservationNoiseInjector(
+            rgb_noise_type=rgb_noise_type,
+            depth_noise_type=depth_noise_type,
+            rgb_noise_params=rgb_noise_params,
+            depth_noise_params=depth_noise_params,
+            noise_probability=noise_probability,
+            rgb_noise_types=rgb_noise_types
+        )
+        
+        logger.info(f"  Noise Probability: {noise_probability:.2%}")
+        logger.info(f"  RGB Noise Type: {rgb_noise_type} (types: {rgb_noise_types})")
+        logger.info(f"  Depth Noise Type: {depth_noise_type}")
+        if rgb_noise_params:
+            logger.info(f"  RGB Noise Params: {rgb_noise_params}")
+        if depth_noise_params:
+            logger.info(f"  Depth Noise Params: {depth_noise_params}")
+        logger.info("=" * 80 + "\n")
+        
+        return noise_injector
     
     def _initialize_eval_observation_saver(self, config):
         """Initialize observation saver for evaluation visualization"""
@@ -132,16 +137,9 @@ class BaseVLNCETrainer(BaseILTrainer):
         """Inject noise into observations if noise injector is initialized"""
         if self.eval_noise_injector is None:
             return observations
-        
-        # Handle two separate injectors (patch + depth)
-        if isinstance(self.eval_noise_injector, tuple):
-            rgb_injector, depth_injector = self.eval_noise_injector
-            noisy_obs = rgb_injector.inject_noise(observations)
-            noisy_obs = depth_injector.inject_noise(noisy_obs)
-            return noisy_obs
-        else:
-            # Single injector for both
-            return self.eval_noise_injector.inject_noise(observations)
+
+        # Use single unified injector that handles both RGB and depth (including patches)
+        return self.eval_noise_injector.inject_noise(observations)
     
     def _save_eval_observations(self, observations, noisy_observations, episode_ids, saver):
         """Save both clean and noisy observations during evaluation"""
@@ -405,8 +403,9 @@ class BaseVLNCETrainer(BaseILTrainer):
             if self.eval_noise_injector is None:
                 logger.warning("Eval noise injector not initialized despite config setting.")
         
-        # Initialize observation saver for visualization
-        eval_obs_saver = self._initialize_eval_observation_saver(config)
+        # Initialize observation saver for visualization (DISABLED - not saving images)
+        # eval_obs_saver = self._initialize_eval_observation_saver(config)
+        eval_obs_saver = None  # Disabled to avoid saving images
 
         observations = envs.reset()
         observations = extract_instruction_tokens(
@@ -419,10 +418,10 @@ class BaseVLNCETrainer(BaseILTrainer):
         # Inject noise into initial observations
         noisy_observations = self._inject_noise_to_observations(observations)
         
-        # Save initial observations (clean and noisy)
-        current_episodes = envs.current_episodes()
-        episode_ids = [ep.episode_id for ep in current_episodes]
-        self._save_eval_observations(clean_observations, noisy_observations, episode_ids, eval_obs_saver)
+        # Save initial observations (clean and noisy) - DISABLED
+        # current_episodes = envs.current_episodes()
+        # episode_ids = [ep.episode_id for ep in current_episodes]
+        # self._save_eval_observations(clean_observations, noisy_observations, episode_ids, eval_obs_saver)
         
         # Use noisy observations for the model
         observations = noisy_observations
@@ -534,10 +533,10 @@ class BaseVLNCETrainer(BaseILTrainer):
             # Inject noise into observations after environment step
             noisy_observations = self._inject_noise_to_observations(observations)
             
-            # Save observations (clean and noisy) for visualization
-            current_episodes = envs.current_episodes()
-            episode_ids = [ep.episode_id for ep in current_episodes]
-            self._save_eval_observations(clean_observations, noisy_observations, episode_ids, eval_obs_saver)
+            # Save observations (clean and noisy) for visualization - DISABLED
+            # current_episodes = envs.current_episodes()
+            # episode_ids = [ep.episode_id for ep in current_episodes]
+            # self._save_eval_observations(clean_observations, noisy_observations, episode_ids, eval_obs_saver)
             
             # Use noisy observations for the model
             observations = noisy_observations

@@ -38,11 +38,15 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
         self.envs = None
         self._env_observations = None
         
-        # Initialize observation saver
+        # Initialize observation saver from config
+        save_noisy_obs = getattr(config.IL, 'SAVE_NOISY_OBS', True)
+        save_dir = getattr(config.IL, 'NOISY_OBS_DIR', 'training_observations')
+        save_frequency = getattr(config.IL, 'NOISY_OBS_SAVE_FREQ', 50)
+        
         self.obs_saver = ObservationSaver(
-            save_dir="training_observations",
-            save_frequency=250, 
-            save_noisy=True 
+            save_dir=save_dir,
+            save_frequency=save_frequency, 
+            save_noisy=save_noisy_obs 
         )
         
         # Initialize noise injector from config
@@ -251,7 +255,7 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
                 noisy_observations = observations  # Use clean observations if no noise injector
             # Save observations to disk (both original and noisy)
             episode_ids = [ep.episode_id for ep in current_episodes]
-            # self.obs_saver.save(observations, episode_ids, noisy_observations if self.noise_injector else None)
+            self.obs_saver.save(observations, episode_ids, noisy_observations if self.noise_injector else None)
 
             current_episodes = self.envs.current_episodes()
 

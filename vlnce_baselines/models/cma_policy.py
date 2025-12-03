@@ -263,10 +263,10 @@ class CMANet(Net):
     ) -> Tuple[Tensor, Tensor, Dict[str, Tensor]]:
         instruction_embedding = self.instruction_encoder(observations)
 
-        print("DEBUG")
-        print("Input Shapes:" )
-        for k, v in observations.items():
-            print(f"  {k}: {v.shape}")
+        # print("DEBUG")
+        # print("Input Shapes:" )
+        # for k, v in observations.items():
+        #     print(f"  {k}: {v.shape}")
         # Compute clean and noisy depth embeddings
         depth_clean_emb = self.depth_encoder({**observations, 'depth': observations.get('depth_clean', observations.get('depth'))})
         depth_clean_emb = torch.flatten(depth_clean_emb, 2)

@@ -31,9 +31,15 @@ class ILPolicy(Policy, metaclass=abc.ABCMeta):
         masks,
         deterministic=False,
     ):
-        features, rnn_states = self.net(
+        # Unpack potential extra_outputs from model forward (same as build_distribution)
+        result = self.net(
             observations, rnn_states, prev_actions, masks
         )
+        if isinstance(result, tuple) and len(result) == 3:
+            features, rnn_states, extra_outputs = result
+        else:
+            features, rnn_states = result
+            
         distribution = self.action_distribution(features)
 
         if deterministic:

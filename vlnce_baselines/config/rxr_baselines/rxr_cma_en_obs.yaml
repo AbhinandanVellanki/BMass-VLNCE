@@ -9,7 +9,8 @@ TENSORBOARD_DIR: data/tensorboard_dirs/rxr_cma_en_dirty_vision
 CHECKPOINT_FOLDER: data/checkpoints/rxr_cma_en_dirty_vision/run1
 EVAL_CKPT_PATH_DIR: data/checkpoints/rxr_cma_en_dirty_vision
 RESULTS_DIR: data/checkpoints/rxr_cma_en_dirty_vision/evals
-LOG_FILE: data/logs/rxr_cma_en_dirty_vision/run1.log
+# LOG_FILE: data/logs/rxr_cma_en_dirty_vision/run1.log
+LOG_FILE: data/logs/rxr_cma_en_dirty_vision/patch/eval/run1.log
 
 INFERENCE:
   SPLIT: test_challenge
@@ -24,21 +25,28 @@ EVAL:
   USE_CKPT_CONFIG: False
   SPLIT: val_unseen
   LANGUAGES: [en-US]
-  EPISODE_COUNT: -1
+  EPISODE_COUNT: 50  # Evaluate only 50 episodes instead of all
   SAMPLE: True
   
-  # Enable noisy observations during evaluation (same as training)
+  # Enable noisy observations during evaluation - EVERY STEP HAS NOISE
   USE_NOISE: True
-  NOISE:
-    RGB_NOISE_TYPE: "gaussian"  # Options: gaussian, salt_pepper, speckle, motion_blur, patch
-    DEPTH_NOISE_TYPE: "gaussian"  # Options: gaussian, dropout, quantization
-    RGB_STD: 0.25  # Standard deviation for RGB noise (25%)
-    DEPTH_STD: 0.25  # Standard deviation for depth noise (25%)
-    # Patch noise parameters (only used when RGB_NOISE_TYPE: "patch")
-    PATCH_NUM: 10
-    PATCH_SIZE_MIN: 20
-    PATCH_SIZE_MAX: 60
-    PATCH_TYPE: "random"  # Options: random, black, white, gray
+  NOISE_PROBABILITY: 1.0  # 100% noise - every step has noise during evaluation
+  
+  # RGB noise: PATCH only
+  RGB_NOISE_TYPE: "patch"
+  RGB_NOISE_PARAMS:
+    patch:
+      num_patches: 10
+      patch_size_range: [20, 60]
+      patch_type: "random"
+  
+  # Depth noise: PATCH noise (NEW!)
+  DEPTH_NOISE_TYPE: "patch"
+  DEPTH_NOISE_PARAMS:
+    patch:
+      num_patches: 10
+      patch_size_range: [20, 60]
+      patch_type: "random"  # random grayscale values 0-1
 
 RL:
   POLICY:
@@ -56,7 +64,7 @@ IL:
   USE_NOISE_INJECTION: True
   NOISE_PROBABILITY: 0.50  # 50% chance to apply noise, 50% clean images
   
-  # RGB noise: 50/50 mix of patch and gaussian when noise is applied (45% each overall)
+  # RGB noise: 50/50 mix of patch and gaussian when noise is applied
   RGB_NOISE_TYPE: "mixed"  # Will randomly choose between patch and gaussian
   RGB_NOISE_TYPES: ["patch", "gaussian"]  # Types to randomly choose from
   RGB_NOISE_PARAMS:
@@ -66,14 +74,19 @@ IL:
     patch:
       num_patches: 10
       patch_size_range: [20, 60]
-      patch_type: "random"  # random, black, white, gray
+      patch_type: "random"  # random colorful patches for RGB
   
-  # Depth noise: always gaussian when noise is applied (90% overall)
-  DEPTH_NOISE_TYPE: "gaussian"
+  # Depth noise: 50/50 mix of patch and gaussian when noise is applied (same as RGB)
+  DEPTH_NOISE_TYPE: "mixed"  # Will randomly choose between patch and gaussian
+  DEPTH_NOISE_TYPES: ["patch", "gaussian"]  # Types to randomly choose from (same as RGB)
   DEPTH_NOISE_PARAMS:
     gaussian:
       mean: 0
       std: 0.25  # 25% Gaussian noise
+    patch:
+      num_patches: 10
+      patch_size_range: [20, 60]
+      patch_type: "random"  # random grayscale patches for depth
   
   # Optional: Save noisy observations for visualization
   SAVE_NOISY_OBS: True
