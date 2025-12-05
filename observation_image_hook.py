@@ -58,15 +58,31 @@ class ObservationNoiseInjector:
         self.depth_noise_params = depth_noise_params or {
             "gaussian": {"mean": 0, "std": 0.5},  # 50% depth noise
             "dropout": {"dropout_prob": 0.5},  # 50% pixel dropout
-            "quantization": {"num_levels": 10}  # More quantization
+            "quantization": {"num_levels": 10},  # More quantization
+            "patch": {"num_patches": 5, "patch_size_range": [10, 50], "patch_type": "random"}  # Default patch params
         }
         
-        # For mixed type, we need patch injector if patches are in the list
+        # Initialize patch injector if patches are needed for RGB or depth
         self.patch_injector = None
-        if rgb_noise_type == "mixed" and self.rgb_noise_types and "patch" in self.rgb_noise_types:
-            # Get patch parameters from rgb_noise_params
+        needs_patches = False
+        
+        # Check if RGB needs patches
+        if rgb_noise_type == "patch":
+            needs_patches = True
+        elif rgb_noise_type == "mixed" and self.rgb_noise_types and "patch" in self.rgb_noise_types:
+            needs_patches = True
+            
+        # Check if depth needs patches
+        if depth_noise_type == "patch":
+            needs_patches = True
+            
+        if needs_patches:
+            # Get patch parameters from rgb_noise_params or depth_noise_params (prefer RGB)
             patch_params = self.rgb_noise_params.get("patch", {})
-            # print(f"\n[PatchInjector] Initializing with params: {patch_params}")
+            if not patch_params and depth_noise_type == "patch":
+                patch_params = self.depth_noise_params.get("patch", {})
+            
+            print(f"\n[PatchInjector] Initializing with params: {patch_params}")
             self.patch_injector = ObservationNoiseInjectorPatch(
                 num_patches=patch_params.get("num_patches", 5),
                 patch_size_range=tuple(patch_params.get("patch_size_range", [10, 50])),
@@ -139,8 +155,16 @@ class ObservationNoiseInjector:
             quantized = depth
         return quantized
     
-    def inject_rgb_noise(self, rgb, reference_shape=None):
-        """Inject noise into RGB image"""
+    def inject_rgb_noise(self, rgb, reference_shape=None, patch_params=None, chosen_noise_type=None):
+        """
+        Inject noise into RGB image
+        
+        Args:
+            rgb: RGB image
+            reference_shape: Expected output shape
+            patch_params: Pre-generated patch parameters for consistent positioning with depth
+            chosen_noise_type: Pre-chosen noise type (for synchronized RGB/depth noise)
+        """
         # Normalize to [0, 1] if needed
         if rgb.max() > 1.0:
             rgb = rgb.astype(np.float32) / 255.0
@@ -149,17 +173,22 @@ class ObservationNoiseInjector:
             rgb = rgb.astype(np.float32)
             was_uint8 = False
         
-        # For mixed type, randomly choose a noise type
-        noise_type = self.rgb_noise_type
-        if self.rgb_noise_type == "mixed":
-            random_val = np.random.rand()
+        # Determine noise type
+        if chosen_noise_type is not None:
+            # Use pre-chosen noise type (synchronized with depth)
+            noise_type = chosen_noise_type
+        elif self.rgb_noise_type == "mixed":
+            # Choose randomly for RGB only
             noise_type = np.random.choice(self.rgb_noise_types)
+        else:
+            # Use configured type
+            noise_type = self.rgb_noise_type
         
         # Apply noise based on type
         if noise_type == "patch":
-            # Use patch injector
+            # Use patch injector with pre-generated params
             if self.patch_injector is not None:
-                noisy_rgb = self.patch_injector.add_patches(rgb)
+                noisy_rgb = self.patch_injector.add_patches(rgb, patch_params=patch_params)
             else:
                 noisy_rgb = rgb
         elif noise_type == "gaussian":
@@ -192,18 +221,44 @@ class ObservationNoiseInjector:
         
         return noisy_rgb
     
-    def inject_depth_noise(self, depth, reference_shape=None):
-        """Inject noise into depth image"""
+    def inject_depth_noise(self, depth, reference_shape=None, patch_params=None, chosen_noise_type=None):
+        """
+        Inject noise into depth image
+        
+        Args:
+            depth: Depth image
+            reference_shape: Expected output shape
+            patch_params: Pre-generated patch parameters for consistent positioning with RGB
+            chosen_noise_type: Pre-chosen noise type (for synchronized RGB/depth noise)
+        """
         depth = depth.astype(np.float32)
         
+        # Determine noise type
+        if chosen_noise_type is not None:
+            # Use pre-chosen noise type (synchronized with RGB)
+            noise_type = chosen_noise_type
+        elif self.depth_noise_type == "mixed":
+            # Choose randomly for depth only
+            noise_type = np.random.choice(self.rgb_noise_types)  # Use same types as RGB
+        else:
+            # Use configured type
+            noise_type = self.depth_noise_type
+        
         # Apply noise based on type
-        if self.depth_noise_type == "gaussian":
+        if noise_type == "patch":
+            # Use patch injector for depth with pre-generated params
+            if self.patch_injector is not None:
+                # Patch injector handles depth images
+                noisy_depth = self.patch_injector.add_depth_patches(depth, patch_params=patch_params)
+            else:
+                noisy_depth = depth
+        elif noise_type == "gaussian":
             params = self.depth_noise_params.get("gaussian", {})
             noisy_depth = self.add_gaussian_noise(depth, **params)
-        elif self.depth_noise_type == "dropout":
+        elif noise_type == "dropout":
             params = self.depth_noise_params.get("dropout", {})
             noisy_depth = self.add_depth_dropout(depth, **params)
-        elif self.depth_noise_type == "quantization":
+        elif noise_type == "quantization":
             params = self.depth_noise_params.get("quantization", {})
             noisy_depth = self.add_depth_quantization(depth, **params)
         else:
@@ -250,6 +305,46 @@ class ObservationNoiseInjector:
             
             noisy_obs = obs.copy()
             
+            # For "mixed" noise type, choose the noise type ONCE for both RGB and depth
+            # This ensures both modalities get the same type of noise (patch or gaussian)
+            chosen_noise_type = None
+            if self.rgb_noise_type == "mixed" and self.depth_noise_type == "mixed":
+                # Both are mixed - choose once and use for both
+                chosen_noise_type = np.random.choice(self.rgb_noise_types)
+            
+            # Generate patch parameters once if using patch noise
+            # This ensures patches are at the same positions in both modalities
+            patch_params = None
+            if self.patch_injector is not None:
+                # Check if we need patches for this observation
+                needs_patches = False
+                
+                if chosen_noise_type == "patch":
+                    # Mixed mode chose patch for both
+                    needs_patches = True
+                elif self.rgb_noise_type == "patch" or self.depth_noise_type == "patch":
+                    # One or both are explicitly set to patch
+                    needs_patches = True
+                
+                if needs_patches:
+                    # Get dimensions from available observation (prefer RGB, fallback to depth)
+                    if "rgb" in obs:
+                        rgb = obs["rgb"]
+                        if torch.is_tensor(rgb):
+                            rgb = rgb.cpu().numpy()
+                        h, w = rgb.shape[:2]
+                    elif "depth" in obs:
+                        depth = obs["depth"]
+                        if torch.is_tensor(depth):
+                            depth = depth.cpu().numpy()
+                        h, w = depth.shape[:2]
+                    else:
+                        h, w = None, None
+                    
+                    # Generate patch params if we have valid dimensions
+                    if h is not None and w is not None:
+                        patch_params = self.patch_injector.generate_patch_params(h, w)
+            
             # Add noise to RGB
             if "rgb" in obs:
                 # print(f"[Global Step {self.step_counter-1}] [Env {idx}] DEBUG: Found 'rgb' in obs, calling inject_rgb_noise()")
@@ -257,7 +352,7 @@ class ObservationNoiseInjector:
                 if torch.is_tensor(rgb):
                     rgb = rgb.cpu().numpy()
                 reference_shape = rgb.shape
-                noisy_rgb = self.inject_rgb_noise(rgb, reference_shape=reference_shape)
+                noisy_rgb = self.inject_rgb_noise(rgb, reference_shape=reference_shape, patch_params=patch_params, chosen_noise_type=chosen_noise_type)
                 # print(f"[Global Step {self.step_counter-1}] [Env {idx}] DEBUG: inject_rgb_noise() returned successfully")
                 
                 # Convert back to tensor if needed - ENSURE FLOAT32
@@ -274,7 +369,7 @@ class ObservationNoiseInjector:
                 if torch.is_tensor(depth):
                     depth = depth.cpu().numpy()
                 reference_shape = depth.shape
-                noisy_depth = self.inject_depth_noise(depth, reference_shape=reference_shape)
+                noisy_depth = self.inject_depth_noise(depth, reference_shape=reference_shape, patch_params=patch_params, chosen_noise_type=chosen_noise_type)
                 # print(f"[Depth Noise] Applied GAUSSIAN noise")
                 
                 # Convert back to tensor if needed - ENSURE FLOAT32
@@ -316,8 +411,41 @@ class ObservationNoiseInjectorPatch:
             print(f"  Patch color: {patch_color}")
         print()
     
-    def add_patches(self, rgb):
-        """Add random patches to RGB image"""
+    def generate_patch_params(self, height, width):
+        """
+        Generate patch parameters (positions and sizes) that can be reused for both RGB and depth
+        
+        Args:
+            height: Image height
+            width: Image width
+            
+        Returns:
+            List of tuples (y, x, patch_h, patch_w) for each patch
+        """
+        patch_params = []
+        
+        for _ in range(self.num_patches):
+            # Random patch size
+            patch_h = np.random.randint(self.patch_size_range[0], self.patch_size_range[1])
+            patch_w = np.random.randint(self.patch_size_range[0], self.patch_size_range[1])
+            
+            # Random position (ensure patch fits in image)
+            if height > patch_h and width > patch_w:
+                y = np.random.randint(0, height - patch_h)
+                x = np.random.randint(0, width - patch_w)
+                patch_params.append((y, x, patch_h, patch_w))
+        
+        return patch_params
+    
+    def add_patches(self, rgb, patch_params=None):
+        """
+        Add random patches to RGB image
+        
+        Args:
+            rgb: RGB image
+            patch_params: Optional pre-generated patch parameters from generate_patch_params()
+                         If None, will generate new random patches
+        """
         # Ensure image is in correct format
         if rgb.max() > 1.0:
             rgb = rgb.astype(np.float32) / 255.0
@@ -329,38 +457,81 @@ class ObservationNoiseInjectorPatch:
         h, w = rgb.shape[:2]
         patched_rgb = rgb.copy()
         
-        for _ in range(self.num_patches):
-            # Random patch size
-            patch_h = np.random.randint(self.patch_size_range[0], self.patch_size_range[1])
-            patch_w = np.random.randint(self.patch_size_range[0], self.patch_size_range[1])
+        # Generate patch params if not provided
+        if patch_params is None:
+            patch_params = self.generate_patch_params(h, w)
+        
+        for (y, x, patch_h, patch_w) in patch_params:
+            # Determine patch color
+            if self.patch_color is not None:
+                # Use specified color (normalize to [0, 1])
+                color = np.array(self.patch_color, dtype=np.float32) / 255.0
+            elif self.patch_type == "black":
+                color = np.array([0.0, 0.0, 0.0])
+            elif self.patch_type == "white":
+                color = np.array([1.0, 1.0, 1.0])
+            elif self.patch_type == "gray":
+                gray_val = np.random.uniform(0.3, 0.7)
+                color = np.array([gray_val, gray_val, gray_val])
+            else:  # random - colorful patches for RGB
+                color = np.random.rand(3)
             
-            # Random position (ensure patch fits in image)
-            if h > patch_h and w > patch_w:
-                y = np.random.randint(0, h - patch_h)
-                x = np.random.randint(0, w - patch_w)
-                
-                # Determine patch color
-                if self.patch_color is not None:
-                    # Use specified color (normalize to [0, 1])
-                    color = np.array(self.patch_color, dtype=np.float32) / 255.0
-                elif self.patch_type == "black":
-                    color = np.array([0.0, 0.0, 0.0])
-                elif self.patch_type == "white":
-                    color = np.array([1.0, 1.0, 1.0])
-                elif self.patch_type == "gray":
-                    gray_val = np.random.uniform(0.3, 0.7)
-                    color = np.array([gray_val, gray_val, gray_val])
-                else:  # random
-                    color = np.random.rand(3)
-                
-                # Apply patch
-                patched_rgb[y:y+patch_h, x:x+patch_w] = color
+            # Apply patch
+            patched_rgb[y:y+patch_h, x:x+patch_w] = color
         
         # Convert back to uint8 if needed
         if was_uint8:
             patched_rgb = (np.clip(patched_rgb, 0, 1) * 255).astype(np.uint8)
         
         return patched_rgb
+    
+    def add_depth_patches(self, depth, patch_params=None):
+        """
+        Add random patches to depth image (single channel, grayscale values between 0 and 1)
+        
+        Args:
+            depth: Depth image
+            patch_params: Optional pre-generated patch parameters from generate_patch_params()
+                         If None, will generate new random patches
+        """
+        depth = depth.astype(np.float32)
+        
+        # Get shape - handle both (H,W) and (H,W,1) formats
+        if len(depth.shape) == 3:
+            h, w, c = depth.shape
+            squeeze_dim = False
+        else:
+            h, w = depth.shape
+            c = 1
+            squeeze_dim = True
+            depth = depth[..., np.newaxis]  # Add channel dimension for processing
+        
+        patched_depth = depth.copy()
+        
+        # Generate patch params if not provided
+        if patch_params is None:
+            patch_params = self.generate_patch_params(h, w)
+        
+        for (y, x, patch_h, patch_w) in patch_params:
+            # Determine patch value (single channel, grayscale between 0 and 1)
+            if self.patch_type == "black":
+                patch_value = 0.0
+            elif self.patch_type == "white":
+                patch_value = 1.0
+            elif self.patch_type == "gray" or self.patch_type == "random":
+                # For depth, always use grayscale (random value between 0 and 1)
+                patch_value = np.random.uniform(0.0, 1.0)
+            else:
+                patch_value = np.random.uniform(0.0, 1.0)
+            
+            # Apply patch (single channel value)
+            patched_depth[y:y+patch_h, x:x+patch_w] = patch_value
+        
+        # Remove channel dimension if original was (H,W)
+        if squeeze_dim:
+            patched_depth = patched_depth.squeeze(-1)
+        
+        return patched_depth
     
     def inject_noise(self, observations):
         """
