@@ -3,46 +3,60 @@ TRAINER_NAME: recollect_trainer
 SIMULATOR_GPU_IDS: [0]
 TORCH_GPU_ID: 0
 NUM_ENVIRONMENTS: 1
-TENSORBOARD_DIR: data/tensorboard_dirs/rxr_cma_en
-CHECKPOINT_FOLDER: data/checkpoints/rxr_cma_en/run_2
-EVAL_CKPT_PATH_DIR: data/checkpoints/rxr_cma_en/run_2
-RESULTS_DIR: data/checkpoints/rxr_cma_en/evals/run_2
-# NUM_PROCESSES: 1
+TENSORBOARD_DIR: data/tensorboard_dirs/rxr_cma_en_dirty_vision_text/run1
+CHECKPOINT_FOLDER: data/checkpoints/rxr_cma_en_dirty_vision_text/run1
+EVAL_CKPT_PATH_DIR: data/checkpoints/rxr_cma_en_dirty_vision_text/run1
+RESULTS_DIR: data/checkpoints/rxr_cma_en_dirty_vision_text/run1
+LOG_FILE: data/logs/rxr_cma_en_dirty_vision_text/run1.log
 
-# TASK_CONFIG:
-TASK:
-  RXR_INSTRUCTION_SENSOR:
-    # Path to noisy instruction features (set to null or comment out to disable)
-    noisy_features_path: "data/datasets/RxR_VLNCE_v0/noisy_text_features/rxr_{split}/{id:06}_{lang}_noisy_text_features.npz"
+TASK_CONFIG:
+  TASK:
+    RXR_INSTRUCTION_SENSOR:
+      features_path: "data/datasets/RxR_VLNCE_v0/text_features/rxr_{split}/{id:06}_{lang}_text_features.npz"
+      # Path to noisy instruction features (set to null or comment out to disable)
+      noisy_features_path: "data/datasets/RxR_VLNCE_v0/noisy_text_features/rxr_{split}/{id:06}_{lang}_noisy_text_features.npz"
 
 INFERENCE:
   SPLIT: test_challenge
   LANGUAGES: [en-US]
   SAMPLE: True
   USE_CKPT_CONFIG: False
-  CKPT_PATH: /home/abhi/Documents/VLN-CE-py38/data/checkpoints/rxr_cma_en_20/run_1/ckpt.14.pth  # REPLACE THIS
+  CKPT_PATH: /home/abhi/Documents/VLN-CE-py38/data/checkpoints/rxr_cma_en_20/run_1/ckpt.14.pth # REPLACE THIS
   PREDICTIONS_FILE: rxr_cma_en_20_test_challenge.jsonl
   FORMAT: rxr
 
 EVAL:
   USE_CKPT_CONFIG: False
-  SPLIT: val_unseen
+  SPLIT: val_seen
   LANGUAGES: [en-US]
   EPISODE_COUNT: -1
   SAMPLE: True
 
   # Enable noisy observations during evaluation (same as training)
   USE_NOISE: True
-  NOISE:
-    RGB_NOISE_TYPE: "gaussian"  # Options: gaussian, salt_pepper, speckle, motion_blur, patch
-    DEPTH_NOISE_TYPE: "gaussian"  # Options: gaussian, dropout, quantization
-    RGB_STD: 0.25  # Standard deviation for RGB noise (25%)
-    DEPTH_STD: 0.25  # Standard deviation for depth noise (25%)
-    # Patch noise parameters (only used when RGB_NOISE_TYPE: "patch")
-    PATCH_NUM: 10
-    PATCH_SIZE_MIN: 20
-    PATCH_SIZE_MAX: 60
-    PATCH_TYPE: "random"  # Options: random, black, white, gray
+  NOISE_PROBABILITY: 0.50 # 50% chance to apply noise during eval
+  
+  RGB_NOISE_TYPE: "mixed" # Mix of choices
+  RGB_NOISE_TYPES: ["patch", "gaussian"] # Types to randomly choose from
+  RGB_NOISE_PARAMS:
+    patch:
+      num_patches: 10
+      patch_size_range: [20, 60]
+      patch_type: "random"
+    gaussian:
+      mean: 0
+      std: 0.25 # 25% Gaussian noise
+
+  DEPTH_NOISE_TYPE: "mixed" # Mix of choices
+  DEPTH_NOISE_TYPES: ["patch", "gaussian"] # Types to randomly choose from
+  DEPTH_NOISE_PARAMS:
+    patch:
+      num_patches: 10
+      patch_size_range: [20, 60]
+      patch_type: "random"
+    gaussian:
+      mean: 0
+      std: 0.25 # 25% Gaussian noise
 
 RL:
   POLICY:
@@ -53,31 +67,35 @@ IL:
   batch_size: 3
   epochs: 15
   inflection_weight_coef: 1.9
-  aux_loss_weight: 2.0  # Weight for auxiliary losses (vision embedding reconstruction)
+  aux_loss_weight: 2.0 # Weight for auxiliary losses (vision embedding reconstruction)
+  
+  # Resume training from checkpoint
+  load_from_ckpt: True  # Set to True to resume from checkpoint
+  ckpt_to_load: data/checkpoints/rxr_cma_en_dirty_vision_text/run_2/ckpt.1.pth
 
   USE_NOISE_INJECTION: True
-  NOISE_PROBABILITY: 0.50  # 50% chance to apply noise, 50% clean images
+  NOISE_PROBABILITY: 0.50 # 50% chance to apply noise, 50% clean images
   # RGB noise: 50/50 mix of patch and gaussian when noise is applied (45% each overall)
-  RGB_NOISE_TYPE: "mixed"  # Will randomly choose between patch and gaussian
-  RGB_NOISE_TYPES: ["patch", "gaussian"]  # Types to randomly choose from
+  RGB_NOISE_TYPE: "mixed" # Will randomly choose between patch and gaussian
+  RGB_NOISE_TYPES: ["patch", "gaussian"] # Types to randomly choose from
   RGB_NOISE_PARAMS:
     gaussian:
       mean: 0
-      std: 0.25  # 25% Gaussian noise
+      std: 0.25 # 25% Gaussian noise
     patch:
       num_patches: 10
       patch_size_range: [20, 60]
-      patch_type: "random"  # random, black, white, gray
+      patch_type: "random" # random, black, white, gray
 
   # Depth noise: always gaussian when noise is applied (90% overall)
   DEPTH_NOISE_TYPE: "gaussian"
   DEPTH_NOISE_PARAMS:
     gaussian:
       mean: 0
-      std: 0.25  # 25% Gaussian noise
+      std: 0.25 # 25% Gaussian noise
 
   # Optional: Save noisy observations for visualization
-  SAVE_NOISY_OBS: True
+  SAVE_NOISY_OBS: False
   NOISY_OBS_DIR: "training_observations"
   NOISY_OBS_SAVE_FREQ: 50
   RECOLLECT_TRAINER:

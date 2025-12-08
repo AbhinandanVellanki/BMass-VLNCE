@@ -1,0 +1,37 @@
+# Example configuration for using depth patches
+
+IL:
+  # Enable noise injection during training with probability
+  USE_NOISE_INJECTION: True
+  NOISE_PROBABILITY: 0.50  # 50% chance to apply noise
+  
+  # RGB noise: patch noise
+  RGB_NOISE_TYPE: "patch"
+  RGB_NOISE_PARAMS:
+    patch:
+      num_patches: 10
+      patch_size_range: [20, 60]
+      patch_type: "random"  # random, black, white, gray
+  
+  # Depth noise: NOW SUPPORTS PATCH NOISE!
+  DEPTH_NOISE_TYPE: "patch"  # NEW: Use "patch" for depth patches
+  DEPTH_NOISE_PARAMS:
+    patch:
+      num_patches: 10
+      patch_size_range: [20, 60]
+      patch_type: "random"  # random: random grayscale values 0-1
+                             # black: 0.0 (no depth/far away)
+                             # white: 1.0 (close depth)
+                             # gray: random gray value 0.3-0.7
+
+# Alternative: Mix gaussian and patch for depth
+# DEPTH_NOISE_TYPE: "gaussian"  # Keep gaussian if you prefer
+# DEPTH_NOISE_PARAMS:
+#   gaussian:
+#     mean: 0
+#     std: 0.1
+
+# Alternative: Use different noise for RGB and depth
+# RGB_NOISE_TYPE: "patch"
+# DEPTH_NOISE_TYPE: "gaussian"
+

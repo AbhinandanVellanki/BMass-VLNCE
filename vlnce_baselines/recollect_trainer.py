@@ -144,12 +144,12 @@ class RecollectTrainer(BaseVLNCETrainer):
                         weights_batch,
                     ) = next(diter)
 
-                    # observations_batch now contains keys like 'rgb', 'rgb_noisy', 'depth', 'depth_noisy', etc.
-                    # Noise is already applied in the dataset during collection
-                    # Apply obs transforms to both clean and noisy observations
-                    print("Input Shapes:1" )
-                    for k, v in observations_batch.items():
-                        print(f"  {k}: {v.shape}")
+                    # # observations_batch now contains keys like 'rgb', 'rgb_noisy', 'depth', 'depth_noisy', etc.
+                    # # Noise is already applied in the dataset during collection
+                    # # Apply obs transforms to both clean and noisy observations
+                    # print("Input Shapes:1" )
+                    # for k, v in observations_batch.items():
+                    #     print(f"  {k}: {v.shape}")
                     # Move observations to device
                     observations_batch = {
                         k: v.to(device=self.device, non_blocking=True)

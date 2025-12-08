@@ -37,16 +37,16 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
         ), "preload size must be greater than batch size."
         self.envs = None
         self._env_observations = None
-        
+
         # Initialize observation saver from config
         save_noisy_obs = getattr(config.IL, 'SAVE_NOISY_OBS', True)
         save_dir = getattr(config.IL, 'NOISY_OBS_DIR', 'training_observations')
         save_frequency = getattr(config.IL, 'NOISY_OBS_SAVE_FREQ', 50)
-        
+
         self.obs_saver = ObservationSaver(
             save_dir=save_dir,
-            save_frequency=save_frequency, 
-            save_noisy=save_noisy_obs 
+            save_frequency=save_frequency,
+            save_noisy=save_noisy_obs
         )
 
         # Initialize noise injector from config
@@ -255,7 +255,7 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
                 noisy_observations = observations  # Use clean observations if no noise injector
             # Save observations to disk (both original and noisy)
             episode_ids = [ep.episode_id for ep in current_episodes]
-            self.obs_saver.save(observations, episode_ids, noisy_observations if self.noise_injector else None)
+            # self.obs_saver.save(observations, episode_ids, noisy_observations if self.noise_injector else None)
 
             current_episodes = self.envs.current_episodes()
 
@@ -283,10 +283,10 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
                     for k in observations[i]:
                         obs_pair[k] = observations[i][k]  # keep original clean key
                         # Always set noisy key: if not present, use clean
-                        if k in noisy_observations[i]:
-                            obs_pair[f"{k}_noisy"] = noisy_observations[i][k]
-                        else:
-                            obs_pair[f"{k}_noisy"] = observations[i][k]
+                        # if k in noisy_observations[i]:
+                        obs_pair[f"{k}_noisy"] = noisy_observations[i][k]
+                        # else:
+                        #     obs_pair[f"{k}_noisy"] = observations[i][k]
                     self._env_observations[i].append(
                         (
                             obs_pair,
@@ -309,7 +309,7 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
         obs, prev_actions, oracle_actions = x
 
         # transpose obs (now contains clean and noisy keys)
-        obs_t = defaultdict(list)
+        obs_t = {}
         # for k in obs[0]:
         #     for i in range(len(obs)):
         #         obs_t[k].append(obs[i][k])
@@ -329,12 +329,14 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
         #     else:
         #         obs_t[k] = torch.from_numpy(np.copy(v))
         B = len(obs)
+        # print(f"obs: {obs[0].keys()}")
         # Collate each key across the batch
         for k in obs[0].keys():
             first_val = obs[0][k]
 
             # Case 1: per-sample value is a dict (e.g. rxr instructions)
             if hasattr(first_val, "items"):
+                # print("RXR: ", first_val.keys())
                 # Keep as list of dicts or process specially
                 # Here we just keep a list of dicts; you can further process if needed
                 for sk in first_val.keys():
@@ -352,6 +354,26 @@ class TeacherRecollectionDataset(torch.utils.data.IterableDataset):
                     raise TypeError(f"Key {k} collated to object array; value example: {vals[0]}")
                 obs_t[k] = torch.from_numpy(np.copy(arr))
                 # obs_t[k] = torch.as_tensor(arr)  # or torch.from_numpy(arr)
+
+        obs_t_filtered = {}
+        for k in ['rgb', 'rgb_noisy', 'depth', 'depth_noisy', 'rxr_instruction:original', 'rxr_instruction:noisy']:
+            if k not in obs_t:
+                k_mod = k.replace('_noisy', '')
+                obs_t_filtered[k] = obs_t[k_mod].clone()
+            else:
+                obs_t_filtered[k] = obs_t[k]
+        obs_t = obs_t_filtered
+
+        # for key in obs_t.keys():
+        #     if key == "rgb_noisy":
+        #         if isinstance(obs_t[key], list):
+        #             print("[BUG] rgb_noisy is a list in dataset __next__!")
+        #         else:
+        #             print("[OK] rgb_noisy type in dataset:", type(obs_t[key]))
+
+        # Optional hard assertion:
+        # if "rgb_noisy" in obs_t and isinstance(obs_t["rgb_noisy"], list):
+        #     raise RuntimeError("Dataset is returning list for rgb_noisy!")
 
         prev_actions = torch.from_numpy(np.copy(prev_actions))
         oracle_actions = torch.from_numpy(np.copy(oracle_actions))

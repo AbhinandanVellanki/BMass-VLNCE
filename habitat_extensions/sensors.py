@@ -17,6 +17,10 @@ from habitat_extensions.shortest_path_follower import (
 )
 from habitat_extensions.task import VLNExtendedEpisode
 
+import os
+is_eval = bool(os.getenv("IS_EVAL"))
+
+
 
 @registry.register_sensor(name="GlobalGPSSensor")
 class GlobalGPSSensor(Sensor):
@@ -154,7 +158,6 @@ class ShortestPathSensor(Sensor):
             best_action = HabitatSimActions.STOP
         return np.array([best_action])
 
-
 @registry.register_sensor
 class RxRInstructionSensor(Sensor):
     """Loads pre-computed intruction features from disk in the baseline RxR
@@ -170,14 +173,13 @@ class RxRInstructionSensor(Sensor):
             config, "noisy_features_path", None
         )
         # Load the noisy instruction mapping
-        self.noisy_instruction_mapping = None
-        if self.noisy_features_path is not None:
-            mapping_path = "/home/ubuntu/BMass-VLNCE/data/datasets/RxR_VLNCE_v0/noisy_instruction_mapping.json"
-            if os.path.exists(mapping_path):
-                with open(mapping_path, "r") as f:
-                    self.noisy_instruction_mapping = json.load(f)
-                print(f"Loaded {len(self.noisy_instruction_mapping)} noisy instruction mappings")
-
+        self.noise_types = ["dropout_10", "dropout_25", "dropout_50", "dropout_75", "heavy", "little", "moderate"]
+        # if self.noisy_features_path is not None:
+        #     # mapping_path = "/home/ubuntu/BMass-VLNCE/data/datasets/RxR_VLNCE_v0/noisy_instruction_mapping.json"
+        #     if os.path.exists(mapping_path):
+        #         with open(mapping_path, "r") as f:
+        #             self.noisy_instruction_mapping = json.load(f)
+        #         print(f"Loaded {len(self.noisy_instruction_mapping)} noisy instruction mappings")
         super().__init__(config=config)
 
     def _get_uuid(self, *args: Any, **kwargs: Any) -> str:
@@ -239,30 +241,58 @@ class RxRInstructionSensor(Sensor):
         # If noisy features path is provided, load both
         if self.noisy_features_path is not None:
             inst_id_str = str(int(episode.instruction.instruction_id))
+            # print("HERE IN NOISY ")
+            noise_type = self.noise_types[np.random.randint(7)]
 
+            noisy_path = self.noisy_features_path.format(
+                split=episode.instruction.split,
+                id=int(episode.instruction.instruction_id),
+                lang=episode.instruction.language.split("-")[0],
+            )
+            noisy_path = os.path.join(os.path.dirname(noisy_path), f"{noise_type}", os.path.basename(noisy_path))
+
+            # Load noisy features
+            try:
+                noisy_features = np.load(noisy_path)
+                # print(f'{["="]*4} NOISED LOADED BTICH   {["="]*4}')
+                noisy_feats = np.zeros((512, 768), dtype=np.float32)
+                s_noisy = noisy_features["features"].shape
+                noisy_feats[: s_noisy[0], : s_noisy[1]] = noisy_features["features"]
+                # print("HERE")
+            except FileNotFoundError:
+                noisy_feats = feats.copy()
+                # raise FileNotFoundError(f"Noisy features file not found at: {noisy_path} {noise_type}")
+            # else:
+            # data/datasets/RxR_VLNCE_v0/noisy_bert_features/rxr_train/little/010913_en_text_features.npz
             # Check if this instruction should use noisy features
-            if self.noisy_instruction_mapping and inst_id_str in self.noisy_instruction_mapping:
-                # Get the noise type for this instruction
-                noise_type = self.noisy_instruction_mapping[inst_id_str]
+            # if self.noisy_instruction_mapping and inst_id_str in self.noisy_instruction_mapping:
+            #     print("Actually: IN NOISY")
+            #     # Get the noise type for this instruction
+            #     noise_type = self.noisy_instruction_mapping[inst_id_str]
                 # print(f"NOISE TTPE: {noise_type}")
                 # print(f"NOISE {inst_id_str} HAI?: {inst_id_str in self.noisy_instruction_mapping}")
                 # Build the path to the noisy file
-                noisy_path = self.noisy_features_path.format(
-                    split=episode.instruction.split,
-                    id=int(episode.instruction.instruction_id),
-                    lang=episode.instruction.language.split("-")[0],
-                ).replace(f"rxr_{episode.instruction.split}/", f"{noise_type}/")
+                # data/datasets/RxR_VLNCE_v0/noisy_bert_features/rxr_train/{id:06}_{lang}_text_features.npz
+                # # data/datasets/RxR_VLNCE_v0/noisy_bert_features/rxr_{split}/{id:06}_{lang}_text_features.npz
+                # data/datasets/RxR_VLNCE_v0/noised_bert_features/rxr_train
+                # /usr1/datasets/rxr/RxR_VLNCE_v0/noised_bert_features/rxr_train
+            #     noisy_path = self.noisy_features_path.format(
+            #         split=episode.instruction.split,
+            #         id=int(episode.instruction.instruction_id),
+            #         lang=episode.instruction.language.split("-")[0],
+            #     )
+            #     noisy_path = os.path.join(os.path.dirname(noisy_path), f"{noise_type}", os.path.basename(noisy_path))
 
-                # Load noisy features
-                try:
-                    noisy_features = np.load(noisy_path)
-                    noisy_feats = np.zeros((512, 768), dtype=np.float32)
-                    s_noisy = noisy_features["features"].shape
-                    noisy_feats[: s_noisy[0], : s_noisy[1]] = noisy_features["features"]
-                    # print("HERE")
-                except FileNotFoundError:
-                    # noisy_feats = feats.copy()
-                    raise FileNotFoundError(f"Noisy features file not found at: {noisy_path} {noise_type}")
+            #     # Load noisy features
+            #     try:
+            #         noisy_features = np.load(noisy_path)
+            #         noisy_feats = np.zeros((512, 768), dtype=np.float32)
+            #         s_noisy = noisy_features["features"].shape
+            #         noisy_feats[: s_noisy[0], : s_noisy[1]] = noisy_features["features"]
+            #         # print("HERE")
+            #     except FileNotFoundError:
+            #         # noisy_feats = feats.copy()
+            #         raise FileNotFoundError(f"Noisy features file not found at: {noisy_path} {noise_type}")
             else:
                 # Use clean features for instructions not in mapping
                 noisy_feats = feats.copy()

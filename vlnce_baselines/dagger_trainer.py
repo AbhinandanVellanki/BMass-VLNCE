@@ -65,6 +65,8 @@ def collate_fn(batch):
 
     new_observations_batch = defaultdict(list)
     # Now sensors include keys like 'rgb_clean', 'rgb_noisy', etc.
+    # for o in observations_batch:
+        # print(f'Sensors: ', o.keys())
     for sensor in observations_batch[0]:
         for bid in range(B):
             new_observations_batch[sensor].append(
@@ -72,10 +74,15 @@ def collate_fn(batch):
             )
 
     observations_batch = new_observations_batch
-
     max_traj_len = max(ele.size(0) for ele in prev_actions_batch)
     for bid in range(B):
+        # print(f"========BID: {bid}=========")
+
         for sensor in observations_batch:
+            # print(f"SENSOR: {sensor} type: {type(observations_batch[sensor][bid])}")
+            # if sensor=='rgb_noisy' and isinstance(observations_batch[sensor][bid], list):
+            #     print("BAD FILE")
+            #     print(observations_batch[sensor][bid])
             observations_batch[sensor][bid] = _pad_helper(
                 observations_batch[sensor][bid], max_traj_len, fill_val=1.0
             )

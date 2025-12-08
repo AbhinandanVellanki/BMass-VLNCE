@@ -396,9 +396,11 @@ class CMANet(Net):
 
                 # import pdb; pdb.set_trace()
                 # Average over feature dimension
-                print(text_denoising_loss.shape)
-                text_denoising_loss = text_denoising_loss.mean(dim=[1, -1])
-                print(f"text_denoising_loss: {text_denoising_loss}")
+                # print(text_denoising_loss.shape)
+                # print(f"text_denoising_loss: {text_denoising_loss.mean(dim=[1, -1])}")
+                # print(f"text_denoising_loss: {text_denoising_loss.sum(dim=[-1]).mean(dim=[-1])}")
+                text_denoising_loss = text_denoising_loss.sum(dim=[1, 2])
+                print(f"txt_denooising_loss: {text_denoising_loss.mean().item()}")
 
                 # text_denoising_loss = text_denoising_loss.sum(dim=[-1]).mean(dim=[-1])
 

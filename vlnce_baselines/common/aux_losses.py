@@ -27,8 +27,6 @@ class _AuxLosses:
 
         for k in self._losses.keys():
             k_loss = torch.masked_select(self._losses[k], mask).mean()
-            if 'text' in k:
-                print(k_loss)
             total = total + self._loss_alphas[k] * k_loss
 
         return total

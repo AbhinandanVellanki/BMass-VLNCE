@@ -75,21 +75,21 @@ class BaseVLNCETrainer(BaseILTrainer):
 
         # Get noise probability (default to 1.0 for eval - always apply noise)
         noise_probability = getattr(config.EVAL, 'NOISE_PROBABILITY', 1.0)
-        
+
         # Get RGB and Depth noise types
         rgb_noise_type = getattr(config.EVAL, 'RGB_NOISE_TYPE', 'gaussian')
         depth_noise_type = getattr(config.EVAL, 'DEPTH_NOISE_TYPE', 'gaussian')
-        
+
         # Get RGB noise types for mixed mode
         rgb_noise_types = None
         if hasattr(config.EVAL, 'RGB_NOISE_TYPES'):
             rgb_noise_types = list(config.EVAL.RGB_NOISE_TYPES)
-        
+
         # Get noise parameters from config if available
         rgb_noise_params = None
         if hasattr(config.EVAL, 'RGB_NOISE_PARAMS'):
             rgb_noise_params = dict(config.EVAL.RGB_NOISE_PARAMS)
-        
+
         depth_noise_params = None
         if hasattr(config.EVAL, 'DEPTH_NOISE_PARAMS'):
             depth_noise_params = dict(config.EVAL.DEPTH_NOISE_PARAMS)
@@ -103,7 +103,7 @@ class BaseVLNCETrainer(BaseILTrainer):
             noise_probability=noise_probability,
             rgb_noise_types=rgb_noise_types
         )
-        
+
         logger.info(f"  Noise Probability: {noise_probability:.2%}")
         logger.info(f"  RGB Noise Type: {rgb_noise_type} (types: {rgb_noise_types})")
         logger.info(f"  Depth Noise Type: {depth_noise_type}")
@@ -112,9 +112,9 @@ class BaseVLNCETrainer(BaseILTrainer):
         if depth_noise_params:
             logger.info(f"  Depth Noise Params: {depth_noise_params}")
         logger.info("=" * 80 + "\n")
-        
+
         return noise_injector
-    
+
     def _initialize_eval_observation_saver(self, config):
         """Initialize observation saver for evaluation visualization"""
         if not NOISE_INJECTOR_AVAILABLE:
@@ -140,7 +140,7 @@ class BaseVLNCETrainer(BaseILTrainer):
 
         # Use single unified injector that handles both RGB and depth (including patches)
         return self.eval_noise_injector.inject_noise(observations)
-    
+
     def _save_eval_observations(self, observations, noisy_observations, episode_ids, saver):
         """Save both clean and noisy observations during evaluation"""
         if saver is not None:
@@ -283,7 +283,7 @@ class BaseVLNCETrainer(BaseILTrainer):
             rgb_diff = (extra['rgb_clean_emb'] - extra['rgb_noisy_emb']).abs().sum(dim=(1,2))
             depth_diff = (extra['depth_clean_emb'] - extra['depth_noisy_emb']).abs().sum(dim=(1,2))
             aug_mask = ((rgb_diff > 0) | (depth_diff > 0)).float()
-            print(f"Reconstruction Loss: {recon_loss.mean().item():.6f} (Augmented samples: {aug_mask.sum().item()}/{aug_mask.size(0)})")
+            # print(f"Reconstruction Loss: {recon_loss.mean().item():.6f} (Augmented samples: {aug_mask.sum().item()}/{aug_mask.size(0)})")
 
             # Register with weight - keep flattened [T*N] to match aux_mask shape
             aux_weight = getattr(self.config.IL, 'aux_loss_weight', 1.0)
@@ -411,7 +411,7 @@ class BaseVLNCETrainer(BaseILTrainer):
             self.eval_noise_injector = self._initialize_eval_noise_injector(config)
             if self.eval_noise_injector is None:
                 logger.warning("Eval noise injector not initialized despite config setting.")
-        
+
         # Initialize observation saver for visualization (DISABLED - not saving images)
         # eval_obs_saver = self._initialize_eval_observation_saver(config)
         eval_obs_saver = None  # Disabled to avoid saving images
@@ -426,14 +426,27 @@ class BaseVLNCETrainer(BaseILTrainer):
 
         # Inject noise into initial observations
         noisy_observations = self._inject_noise_to_observations(observations)
-        
+
         # Save initial observations (clean and noisy) - DISABLED
         # current_episodes = envs.current_episodes()
         # episode_ids = [ep.episode_id for ep in current_episodes]
         # self._save_eval_observations(clean_observations, noisy_observations, episode_ids, eval_obs_saver)
-        
+
         # Use noisy observations for the model
         observations = noisy_observations
+        
+        # FIX: Handle rxr_instruction dict structure during eval
+        for i, obs in enumerate(observations):
+            if 'rxr_instruction' in obs and isinstance(obs['rxr_instruction'], dict):
+                # Extract just the features array from dict
+                if 'noisy' in obs['rxr_instruction']:
+                    observations[i]['rxr_instruction'] = obs['rxr_instruction']['noisy']
+                elif 'original' in obs['rxr_instruction']:
+                    observations[i]['rxr_instruction'] = obs['rxr_instruction']['original']
+                else:
+                    # Fallback: take first value
+                    observations[i]['rxr_instruction'] = list(obs['rxr_instruction'].values())[0]
+        
         batch = batch_obs(observations, self.device)
         batch = apply_obs_transforms_batch(batch, self.obs_transforms)
 
@@ -541,14 +554,27 @@ class BaseVLNCETrainer(BaseILTrainer):
 
             # Inject noise into observations after environment step
             noisy_observations = self._inject_noise_to_observations(observations)
-            
+
             # Save observations (clean and noisy) for visualization - DISABLED
             # current_episodes = envs.current_episodes()
             # episode_ids = [ep.episode_id for ep in current_episodes]
             # self._save_eval_observations(clean_observations, noisy_observations, episode_ids, eval_obs_saver)
-            
+
             # Use noisy observations for the model
             observations = noisy_observations
+            
+            # FIX: Handle rxr_instruction dict structure during eval
+            for i, obs in enumerate(observations):
+                if 'rxr_instruction' in obs and isinstance(obs['rxr_instruction'], dict):
+                    # Extract just the features array from dict
+                    if 'noisy' in obs['rxr_instruction']:
+                        observations[i]['rxr_instruction'] = obs['rxr_instruction']['noisy']
+                    elif 'original' in obs['rxr_instruction']:
+                        observations[i]['rxr_instruction'] = obs['rxr_instruction']['original']
+                    else:
+                        # Fallback: take first value
+                        observations[i]['rxr_instruction'] = list(obs['rxr_instruction'].values())[0]
+            
             batch = batch_obs(observations, self.device)
             batch = apply_obs_transforms_batch(batch, self.obs_transforms)
 

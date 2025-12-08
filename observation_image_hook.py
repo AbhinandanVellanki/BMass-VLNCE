@@ -3,12 +3,15 @@ import cv2
 import numpy as np
 import torch
 
+is_eval = bool(os.getenv("IS_EVAL"))
+if is_eval:
+    np.random.seed(42)
 
 class ObservationNoiseInjector:
     """Add various types of noise to RGB and Depth observations"""
-    
-    def __init__(self, 
-                 rgb_noise_type="mixed", 
+
+    def __init__(self,
+                 rgb_noise_type="mixed",
                  depth_noise_type="gaussian",
                  rgb_noise_params=None,
                  depth_noise_params=None,
@@ -23,20 +26,22 @@ class ObservationNoiseInjector:
             noise_probability: Probability of applying noise (0.0-1.0). Default 1.0 (always apply)
             rgb_noise_types: List of noise types to randomly choose from when rgb_noise_type="mixed"
         """
+        if is_eval:
+            np.random.seed(42)
         self.rgb_noise_type = rgb_noise_type
         self.depth_noise_type = depth_noise_type
         self.noise_probability = noise_probability
         self.rgb_noise_types = rgb_noise_types if rgb_noise_types is not None else ["gaussian"]
-        
+
         # Global step counter for debugging
         self.step_counter = 0
-        
+
         print(f"\n[NoiseInjector] DEBUG: Received parameters:")
         print(f"  rgb_noise_type: {rgb_noise_type}")
         print(f"  rgb_noise_types: {rgb_noise_types}")
         print(f"  noise_probability: {noise_probability}")
         print(f"  After processing - self.rgb_noise_types: {self.rgb_noise_types}")
-        
+
         # Default parameters
         default_rgb_params = {
             "gaussian": {"mean": 0, "std": 0.25},  # 50% noise
@@ -45,7 +50,7 @@ class ObservationNoiseInjector:
             "motion_blur": {"kernel_size": 15},
             "patch": {"num_patches": 5, "patch_size_range": [10, 50], "patch_type": "random"}
         }
-        
+
         # Merge provided params with defaults
         self.rgb_noise_params = default_rgb_params.copy()
         if rgb_noise_params:
@@ -54,41 +59,41 @@ class ObservationNoiseInjector:
                     self.rgb_noise_params[key].update(val)
                 else:
                     self.rgb_noise_params[key] = val
-        
+
         self.depth_noise_params = depth_noise_params or {
             "gaussian": {"mean": 0, "std": 0.5},  # 50% depth noise
             "dropout": {"dropout_prob": 0.5},  # 50% pixel dropout
             "quantization": {"num_levels": 10},  # More quantization
             "patch": {"num_patches": 5, "patch_size_range": [10, 50], "patch_type": "random"}  # Default patch params
         }
-        
+
         # Initialize patch injector if patches are needed for RGB or depth
         self.patch_injector = None
         needs_patches = False
-        
+
         # Check if RGB needs patches
         if rgb_noise_type == "patch":
             needs_patches = True
         elif rgb_noise_type == "mixed" and self.rgb_noise_types and "patch" in self.rgb_noise_types:
             needs_patches = True
-            
+
         # Check if depth needs patches
         if depth_noise_type == "patch":
             needs_patches = True
-            
+
         if needs_patches:
             # Get patch parameters from rgb_noise_params or depth_noise_params (prefer RGB)
             patch_params = self.rgb_noise_params.get("patch", {})
             if not patch_params and depth_noise_type == "patch":
                 patch_params = self.depth_noise_params.get("patch", {})
-            
+
             print(f"\n[PatchInjector] Initializing with params: {patch_params}")
             self.patch_injector = ObservationNoiseInjectorPatch(
                 num_patches=patch_params.get("num_patches", 5),
                 patch_size_range=tuple(patch_params.get("patch_size_range", [10, 50])),
                 patch_type=patch_params.get("patch_type", "random")
             )
-        
+
         # print(f"\n[NoiseInjector] Initialized")
         # print(f"  RGB noise: {rgb_noise_type}")
         # if rgb_noise_type == "mixed":
@@ -98,13 +103,13 @@ class ObservationNoiseInjector:
         # print(f"  Noise probability: {noise_probability:.2%}")
         # print(f"  RGB params: {self.rgb_noise_params}")
         # print()
-    
+
     def add_gaussian_noise(self, image, mean=0, std=0.02):
         """Add Gaussian noise to image"""
         noise = np.random.normal(mean, std, image.shape)
         noisy = image + noise
         return np.clip(noisy, 0, 1)
-    
+
     def add_salt_pepper_noise(self, image, amount=0.01):
         """Add salt and pepper noise"""
         noisy = image.copy()
@@ -117,20 +122,20 @@ class ObservationNoiseInjector:
         coords = [np.random.randint(0, i, num_pepper) for i in image.shape]
         noisy[tuple(coords)] = 0.0
         return noisy
-    
+
     def add_speckle_noise(self, image, std=0.02):
         """Add speckle noise"""
         noise = np.random.randn(*image.shape) * std
         noisy = image + image * noise
         return np.clip(noisy, 0, 1)
-    
+
     def add_motion_blur(self, image, kernel_size=5):
         """Add motion blur"""
         # Create motion blur kernel
         kernel = np.zeros((kernel_size, kernel_size))
         kernel[int((kernel_size-1)/2), :] = np.ones(kernel_size)
         kernel = kernel / kernel_size
-        
+
         # Apply to each channel
         if len(image.shape) == 3:
             blurred = np.zeros_like(image)
@@ -139,13 +144,13 @@ class ObservationNoiseInjector:
             return blurred
         else:
             return cv2.filter2D(image, -1, kernel)
-    
+
     def add_depth_dropout(self, depth, dropout_prob=0.05):
         """Randomly drop out depth pixels (simulate sensor failure)"""
         mask = np.random.rand(*depth.shape) > dropout_prob
         noisy_depth = depth * mask
         return noisy_depth
-    
+
     def add_depth_quantization(self, depth, num_levels=50):
         """Quantize depth values (simulate lower precision sensor)"""
         max_depth = depth.max()
@@ -154,11 +159,11 @@ class ObservationNoiseInjector:
         else:
             quantized = depth
         return quantized
-    
+
     def inject_rgb_noise(self, rgb, reference_shape=None, patch_params=None, chosen_noise_type=None):
         """
         Inject noise into RGB image
-        
+
         Args:
             rgb: RGB image
             reference_shape: Expected output shape
@@ -172,7 +177,7 @@ class ObservationNoiseInjector:
         else:
             rgb = rgb.astype(np.float32)
             was_uint8 = False
-        
+
         # Determine noise type
         if chosen_noise_type is not None:
             # Use pre-chosen noise type (synchronized with depth)
@@ -183,7 +188,7 @@ class ObservationNoiseInjector:
         else:
             # Use configured type
             noise_type = self.rgb_noise_type
-        
+
         # Apply noise based on type
         if noise_type == "patch":
             # Use patch injector with pre-generated params
@@ -207,24 +212,24 @@ class ObservationNoiseInjector:
             print(f"[RGB Noise] Applied MOTION_BLUR noise")
         else:
             noisy_rgb = rgb
-        
+
         # Ensure output shape matches reference_shape if provided
         if reference_shape is not None and noisy_rgb.shape != reference_shape:
             h, w = reference_shape[:2]
             noisy_rgb = cv2.resize(noisy_rgb, (w, h), interpolation=cv2.INTER_LINEAR)
             if len(reference_shape) == 3 and noisy_rgb.ndim == 2:
                 noisy_rgb = noisy_rgb[..., None]
-        
+
         # Convert back to uint8 if needed
         if was_uint8:
             noisy_rgb = (np.clip(noisy_rgb, 0, 1) * 255).astype(np.uint8)
-        
+
         return noisy_rgb
-    
+
     def inject_depth_noise(self, depth, reference_shape=None, patch_params=None, chosen_noise_type=None):
         """
         Inject noise into depth image
-        
+
         Args:
             depth: Depth image
             reference_shape: Expected output shape
@@ -232,7 +237,7 @@ class ObservationNoiseInjector:
             chosen_noise_type: Pre-chosen noise type (for synchronized RGB/depth noise)
         """
         depth = depth.astype(np.float32)
-        
+
         # Determine noise type
         if chosen_noise_type is not None:
             # Use pre-chosen noise type (synchronized with RGB)
@@ -243,7 +248,7 @@ class ObservationNoiseInjector:
         else:
             # Use configured type
             noise_type = self.depth_noise_type
-        
+
         # Apply noise based on type
         if noise_type == "patch":
             # Use patch injector for depth with pre-generated params
@@ -263,69 +268,70 @@ class ObservationNoiseInjector:
             noisy_depth = self.add_depth_quantization(depth, **params)
         else:
             noisy_depth = depth
-        
+
         # Ensure output shape matches reference_shape if provided
         if reference_shape is not None and noisy_depth.shape != reference_shape:
             h, w = reference_shape[:2]
             noisy_depth = cv2.resize(noisy_depth, (w, h), interpolation=cv2.INTER_LINEAR)
             if len(reference_shape) == 3 and noisy_depth.ndim == 2:
                 noisy_depth = noisy_depth[..., None]
-        
+
         return noisy_depth
-    
+
     def inject_noise(self, observations):
         """
         Inject noise into observations with probability
-        
+
         Args:
             observations: List of observation dicts or single observation dict
-            
+
         Returns:
             Noisy observations in the same format
         """
         is_list = isinstance(observations, list)
         if not is_list:
             observations = [observations]
-        
+
         noisy_observations = []
-        
+        # print(len(observations))
+        # print(type(observations[0]))
         for idx, obs in enumerate(observations):
             # Check if we should apply noise based on probability
             prob_random = np.random.rand()
             apply_noise = prob_random <= self.noise_probability
-            
+
             # print(f"\n[Global Step {self.step_counter}] [Env {idx}] Probability check - Random: {prob_random:.4f}, Threshold: {self.noise_probability:.2f}, Apply noise: {apply_noise}")
             self.step_counter += 1
-            
+
             if not apply_noise:
                 # Return clean observations
                 # print(f"[Global Step {self.step_counter-1}] [Env {idx}] Using CLEAN observations (no noise)")
                 noisy_observations.append(obs.copy())
                 continue
-            
+
             noisy_obs = obs.copy()
-            
+
             # For "mixed" noise type, choose the noise type ONCE for both RGB and depth
             # This ensures both modalities get the same type of noise (patch or gaussian)
             chosen_noise_type = None
             if self.rgb_noise_type == "mixed" and self.depth_noise_type == "mixed":
                 # Both are mixed - choose once and use for both
                 chosen_noise_type = np.random.choice(self.rgb_noise_types)
-            
+
             # Generate patch parameters once if using patch noise
             # This ensures patches are at the same positions in both modalities
             patch_params = None
             if self.patch_injector is not None:
                 # Check if we need patches for this observation
                 needs_patches = False
-                
+
                 if chosen_noise_type == "patch":
                     # Mixed mode chose patch for both
                     needs_patches = True
                 elif self.rgb_noise_type == "patch" or self.depth_noise_type == "patch":
                     # One or both are explicitly set to patch
                     needs_patches = True
-                
+
                 if needs_patches:
                     # Get dimensions from available observation (prefer RGB, fallback to depth)
                     if "rgb" in obs:
@@ -340,11 +346,11 @@ class ObservationNoiseInjector:
                         h, w = depth.shape[:2]
                     else:
                         h, w = None, None
-                    
+
                     # Generate patch params if we have valid dimensions
                     if h is not None and w is not None:
                         patch_params = self.patch_injector.generate_patch_params(h, w)
-            
+
             # Add noise to RGB
             if "rgb" in obs:
                 # print(f"[Global Step {self.step_counter-1}] [Env {idx}] DEBUG: Found 'rgb' in obs, calling inject_rgb_noise()")
@@ -354,7 +360,7 @@ class ObservationNoiseInjector:
                 reference_shape = rgb.shape
                 noisy_rgb = self.inject_rgb_noise(rgb, reference_shape=reference_shape, patch_params=patch_params, chosen_noise_type=chosen_noise_type)
                 # print(f"[Global Step {self.step_counter-1}] [Env {idx}] DEBUG: inject_rgb_noise() returned successfully")
-                
+
                 # Convert back to tensor if needed - ENSURE FLOAT32
                 if torch.is_tensor(obs["rgb"]):
                     noisy_obs["rgb"] = torch.from_numpy(noisy_rgb).float()  # Force float32
@@ -362,7 +368,7 @@ class ObservationNoiseInjector:
                     noisy_obs["rgb"] = noisy_rgb.astype(np.float32)  # Force float32
             else:
                 pass  # No 'rgb' key found in obs
-            
+
             # Add noise to depth
             if "depth" in obs:
                 depth = obs["depth"]
@@ -371,22 +377,22 @@ class ObservationNoiseInjector:
                 reference_shape = depth.shape
                 noisy_depth = self.inject_depth_noise(depth, reference_shape=reference_shape, patch_params=patch_params, chosen_noise_type=chosen_noise_type)
                 # print(f"[Depth Noise] Applied GAUSSIAN noise")
-                
+
                 # Convert back to tensor if needed - ENSURE FLOAT32
                 if torch.is_tensor(obs["depth"]):
                     noisy_obs["depth"] = torch.from_numpy(noisy_depth).float()  # Force float32
                 else:
                     noisy_obs["depth"] = noisy_depth.astype(np.float32)  # Force float32
-            
+
             noisy_observations.append(noisy_obs)
-        
+
         return noisy_observations if is_list else noisy_observations[0]
 
 
 class ObservationNoiseInjectorPatch:
     """Add random patches/occlusions to RGB observations"""
-    
-    def __init__(self, 
+
+    def __init__(self,
                  num_patches=5,
                  patch_size_range=(10, 50),
                  patch_type="random",
@@ -402,7 +408,7 @@ class ObservationNoiseInjectorPatch:
         self.patch_size_range = patch_size_range
         self.patch_type = patch_type
         self.patch_color = patch_color
-        
+
         print(f"\n[PatchNoiseInjector] Initialized")
         print(f"  Num patches: {num_patches}")
         print(f"  Patch size range: {patch_size_range}")
@@ -410,37 +416,37 @@ class ObservationNoiseInjectorPatch:
         if patch_color is not None:
             print(f"  Patch color: {patch_color}")
         print()
-    
+
     def generate_patch_params(self, height, width):
         """
         Generate patch parameters (positions and sizes) that can be reused for both RGB and depth
-        
+
         Args:
             height: Image height
             width: Image width
-            
+
         Returns:
             List of tuples (y, x, patch_h, patch_w) for each patch
         """
         patch_params = []
-        
+
         for _ in range(self.num_patches):
             # Random patch size
             patch_h = np.random.randint(self.patch_size_range[0], self.patch_size_range[1])
             patch_w = np.random.randint(self.patch_size_range[0], self.patch_size_range[1])
-            
+
             # Random position (ensure patch fits in image)
             if height > patch_h and width > patch_w:
                 y = np.random.randint(0, height - patch_h)
                 x = np.random.randint(0, width - patch_w)
                 patch_params.append((y, x, patch_h, patch_w))
-        
+
         return patch_params
-    
+
     def add_patches(self, rgb, patch_params=None):
         """
         Add random patches to RGB image
-        
+
         Args:
             rgb: RGB image
             patch_params: Optional pre-generated patch parameters from generate_patch_params()
@@ -453,14 +459,14 @@ class ObservationNoiseInjectorPatch:
         else:
             rgb = rgb.astype(np.float32)
             was_uint8 = False
-        
+
         h, w = rgb.shape[:2]
         patched_rgb = rgb.copy()
-        
+
         # Generate patch params if not provided
         if patch_params is None:
             patch_params = self.generate_patch_params(h, w)
-        
+
         for (y, x, patch_h, patch_w) in patch_params:
             # Determine patch color
             if self.patch_color is not None:
@@ -475,27 +481,27 @@ class ObservationNoiseInjectorPatch:
                 color = np.array([gray_val, gray_val, gray_val])
             else:  # random - colorful patches for RGB
                 color = np.random.rand(3)
-            
+
             # Apply patch
             patched_rgb[y:y+patch_h, x:x+patch_w] = color
-        
+
         # Convert back to uint8 if needed
         if was_uint8:
             patched_rgb = (np.clip(patched_rgb, 0, 1) * 255).astype(np.uint8)
-        
+
         return patched_rgb
-    
+
     def add_depth_patches(self, depth, patch_params=None):
         """
         Add random patches to depth image (single channel, grayscale values between 0 and 1)
-        
+
         Args:
             depth: Depth image
             patch_params: Optional pre-generated patch parameters from generate_patch_params()
                          If None, will generate new random patches
         """
         depth = depth.astype(np.float32)
-        
+
         # Get shape - handle both (H,W) and (H,W,1) formats
         if len(depth.shape) == 3:
             h, w, c = depth.shape
@@ -505,13 +511,13 @@ class ObservationNoiseInjectorPatch:
             c = 1
             squeeze_dim = True
             depth = depth[..., np.newaxis]  # Add channel dimension for processing
-        
+
         patched_depth = depth.copy()
-        
+
         # Generate patch params if not provided
         if patch_params is None:
             patch_params = self.generate_patch_params(h, w)
-        
+
         for (y, x, patch_h, patch_w) in patch_params:
             # Determine patch value (single channel, grayscale between 0 and 1)
             if self.patch_type == "black":
@@ -523,164 +529,165 @@ class ObservationNoiseInjectorPatch:
                 patch_value = np.random.uniform(0.0, 1.0)
             else:
                 patch_value = np.random.uniform(0.0, 1.0)
-            
+
             # Apply patch (single channel value)
             patched_depth[y:y+patch_h, x:x+patch_w] = patch_value
-        
+
         # Remove channel dimension if original was (H,W)
         if squeeze_dim:
             patched_depth = patched_depth.squeeze(-1)
-        
+
         return patched_depth
-    
+
     def inject_noise(self, observations):
         """
         Inject patch noise into RGB observations
-        
+
         Args:
             observations: List of observation dicts or single observation dict
-            
+
         Returns:
             Noisy observations with patches
         """
         is_list = isinstance(observations, list)
         if not is_list:
             observations = [observations]
-        
+
         noisy_observations = []
-        
+
         for obs in observations:
             noisy_obs = obs.copy()
-            
+
             # Add patches to RGB only
             if "rgb" in obs:
                 rgb = obs["rgb"]
                 if torch.is_tensor(rgb):
                     rgb = rgb.cpu().numpy()
-                
+
                 patched_rgb = self.add_patches(rgb)
-                
+
                 # Convert back to tensor if needed - ENSURE FLOAT32
                 if torch.is_tensor(obs["rgb"]):
                     noisy_obs["rgb"] = torch.from_numpy(patched_rgb).float()
                 else:
                     noisy_obs["rgb"] = patched_rgb.astype(np.float32)
-            
+
             # Keep depth unchanged
             if "depth" in obs:
                 noisy_obs["depth"] = obs["depth"]
-            
+
             noisy_observations.append(noisy_obs)
-        
+
         return noisy_observations if is_list else noisy_observations[0]
 
 
 class ObservationSaver:
     """Save RGB and Depth observations to disk during training"""
-    
+
     def __init__(self, save_dir="training_observations", save_frequency=50, save_noisy=True):
         self.save_dir = save_dir
         self.save_frequency = save_frequency
         self.save_noisy = save_noisy
         self.step_count = 0
-        
+
         # Create directories for original images
         os.makedirs(save_dir, exist_ok=True)
         os.makedirs(os.path.join(save_dir, "rgb"), exist_ok=True)
         os.makedirs(os.path.join(save_dir, "depth"), exist_ok=True)
-        
+
         # Create directories for noisy images
         if save_noisy:
             os.makedirs(os.path.join(save_dir, "rgb_noisy"), exist_ok=True)
             os.makedirs(os.path.join(save_dir, "depth_noisy"), exist_ok=True)
-        
+
         print(f"\n[ObservationSaver] Saving observations to: {os.path.abspath(save_dir)}")
         print(f"[ObservationSaver] Save frequency: every {save_frequency} steps")
         print(f"[ObservationSaver] Save noisy images: {save_noisy}\n")
-    
+
     def save(self, observations, episode_ids, noisy_observations=None):
         """Save RGB and depth from observations"""
         self.step_count += 1
-        
+
         if self.step_count % self.save_frequency != 0:
             return
-        
+
         # observations is a list from multiple environments
         for env_idx, obs in enumerate(observations):
             ep_id = episode_ids[env_idx] if env_idx < len(episode_ids) else f"env{env_idx}"
-            
+
             # Save original RGB
             if "rgb" in obs:
                 rgb = obs["rgb"]
                 if hasattr(rgb, 'cpu'):  # torch tensor
                     rgb = rgb.cpu().numpy()
-                
+
                 # Ensure uint8
                 if rgb.max() <= 1.0:
                     rgb = (rgb * 255).astype(np.uint8)
                 else:
                     rgb = rgb.astype(np.uint8)
-                
+
                 # Save as image
                 rgb_path = os.path.join(
-                    self.save_dir, "rgb", 
+                    self.save_dir, "rgb",
                     f"step_{self.step_count:06d}_env{env_idx}_ep{ep_id}.jpg"
                 )
                 cv2.imwrite(rgb_path, cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
-            
+
             # Save original Depth
             if "depth" in obs:
                 depth = obs["depth"]
                 if hasattr(depth, 'cpu'):  # torch tensor
                     depth = depth.cpu().numpy()
-                
+
                 depth = depth.squeeze()
-                
+
                 # Normalize to 0-255 for visualization
                 depth_vis = np.clip(depth * 255 / 10.0, 0, 255).astype(np.uint8)
-                
+
                 depth_path = os.path.join(
                     self.save_dir, "depth",
                     f"step_{self.step_count:06d}_env{env_idx}_ep{ep_id}.jpg"
                 )
                 cv2.imwrite(depth_path, depth_vis)
-            
+
             # Save noisy versions if provided
             if self.save_noisy and noisy_observations is not None:
+                print(f"HERE: {self.save_noisy}")
                 noisy_obs = noisy_observations[env_idx]
-                
+
                 # Save noisy RGB
                 if "rgb" in noisy_obs:
                     noisy_rgb = noisy_obs["rgb"]
                     if hasattr(noisy_rgb, 'cpu'):
                         noisy_rgb = noisy_rgb.cpu().numpy()
-                    
+
                     if noisy_rgb.max() <= 1.0:
                         noisy_rgb = (noisy_rgb * 255).astype(np.uint8)
                     else:
                         noisy_rgb = noisy_rgb.astype(np.uint8)
-                    
+
                     noisy_rgb_path = os.path.join(
                         self.save_dir, "rgb_noisy",
                         f"step_{self.step_count:06d}_env{env_idx}_ep{ep_id}.jpg"
                     )
                     cv2.imwrite(noisy_rgb_path, cv2.cvtColor(noisy_rgb, cv2.COLOR_RGB2BGR))
-                
+
                 # Save noisy Depth
                 if "depth" in noisy_obs:
                     noisy_depth = noisy_obs["depth"]
                     if hasattr(noisy_depth, 'cpu'):
                         noisy_depth = noisy_depth.cpu().numpy()
-                    
+
                     noisy_depth = noisy_depth.squeeze()
                     noisy_depth_vis = np.clip(noisy_depth * 255 / 10.0, 0, 255).astype(np.uint8)
-                    
+
                     noisy_depth_path = os.path.join(
                         self.save_dir, "depth_noisy",
                         f"step_{self.step_count:06d}_env{env_idx}_ep{ep_id}.jpg"
                     )
                     cv2.imwrite(noisy_depth_path, noisy_depth_vis)
-        
+
         if self.step_count % (self.save_frequency * 10) == 0:
             print(f"[ObservationSaver] Saved observations at step {self.step_count}")
 
